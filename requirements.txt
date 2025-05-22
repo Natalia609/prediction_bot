@@ -1,10 +1,10 @@
 requests==2.31.0  # или актуальная версия
 telebot==0.0.5
-flask==2.0.3
+flask==2.2.5
 tensorflow==2.15.0
-numpy==1.22.4
+numpy==1.23.5
 bcrypt==4.0.1
-python-dotenv==0.21.0
-keras==2.12.0
+python-dotenv==1.0.0
+keras==2.15.0
 gunicorn==21.2.0
 werkzeug==2.0.3
