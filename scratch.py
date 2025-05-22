@@ -10,6 +10,8 @@ import bcrypt
 from flask import Flask, request, abort
 import secrets
 import io
+from tensorflow.keras.layers import InputLayer
+from tensorflow.keras.models import load_model
 
 SECRET_TOKEN = "Jt9V3Lp"
 TELEGRAM_TOKEN="7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw"
@@ -50,18 +52,18 @@ def download_model():
         except Exception as e:
             logger.error(f"Model download failed: {e}")
             raise
-
+custom_objects = {
+    "InputLayer": lambda **kwargs: InputLayer(**{k: v for k, v in kwargs.items() if k != "batch_shape"})
+}
 
 # Инициализация модели
 try:
     download_model()
-    model = tf.keras.models.load_model(MODEL_PATH)
-    logger.info("Model loaded successfully!")
+    model = load_model(MODEL_PATH, custom_objects=custom_objects, compile=False)
+    logger.info("✅ Model loaded successfully!")
 except Exception as e:
-    logger.error(f"Failed to load model: {e}")
-    model = None
-    if os.environ.get('REQUIRE_MODEL', 'True') == 'True':
-        exit(1)
+    logger.error(f"❌ Failed to load model: {e}")
+    exit(1)
 
 
 # Webhook handling
@@ -455,36 +457,33 @@ def process_password_reset(message):
 @bot.message_handler(content_types=['photo'])
 @check_registration
 def handle_photo(message):
-    chat_id = message.chat.id
     try:
-        # Оптимизированная загрузка изображения в память
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded = bot.download_file(file_info.file_path)
-
-        # Обработка изображения без сохранения на диск
+        
+        # Обработка в памяти без сохранения файла
         img = load_img(io.BytesIO(downloaded), target_size=(200, 200))
-        x = img_to_array(img)
-        x = np.expand_dims(x, axis=0) / 255.0
-
+        x = img_to_array(img) / 255.0
+        x = np.expand_dims(x, axis=0)
+        
         # Предсказание
         if model:
-            pred = model.predict(x)[0][0]
+            pred = model.predict(x, verbose=0)[0][0]
             result = "дельфин" if pred > 0.5 else "человек"
             confidence = pred if pred > 0.5 else 1 - pred
             response = f"🔍 Результат: {result} ({confidence:.1%})"
         else:
             response = "❌ Ошибка модели"
-
+        
         # Обновление статистики
         with create_connection() as conn:
-            conn.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
-
+            conn.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (message.chat.id,))
+        
         bot.reply_to(message, response)
-
+    
     except Exception as e:
-        logger.error(f"Image processing error: {e}")
-        bot.reply_to(message, "❌ Ошибка обработки изображения")
-
+        logger.error(f"Image error: {e}")
+        bot.reply_to(message, "❌ Ошибка обработки")
 
 if __name__ == '__main__':
     init_db()
