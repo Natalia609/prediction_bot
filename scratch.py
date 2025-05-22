@@ -39,7 +39,7 @@ def set_telegram_webhook():
     WEBHOOK_URL = "https://prediction-bot-1-0753.onrender.com/webhook"
 
     try:
-        response = requests.post(
+        response = request.post(
             f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook',
             json={
                 'url': WEBHOOK_URL,
