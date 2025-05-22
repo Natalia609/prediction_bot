@@ -23,11 +23,24 @@ logger = logging.getLogger(__name__)
 # Инициализация бота
 bot = telebot.TeleBot("7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw")
 
+MODEL_URL = "https://github.com/Natalia609/prediction_bot/releases/download/v1.0.0/people_dolphin_classifier.h5"
+MODEL_PATH = "people_dolphin_classifier.h5"
 # Загрузка модели классификации
+def download_model():
+    """Скачивает модель из GitHub Releases, если её нет локально"""
+    if not os.path.exists(MODEL_PATH):
+        print("Downloading model...")
+        response = requests.get(MODEL_URL, allow_redirects=True)
+        if response.status_code == 200:
+            with open(MODEL_PATH, "wb") as f:
+                f.write(response.content)
+            print("Model downloaded successfully!")
+        else:
+            raise Exception(f"Failed to download model. Status code: {response.status_code}")
+# Загрузка модели при старте приложения
 try:
-    model_path = os.path.join(os.getcwd(), 'people_dolphin_classifier.h5')
-    model = tf.keras.models.load_model(model_path)
-    logger.info("Модель успешно загружена")
+    download_model()
+    model = tf.keras.models.load_model(MODEL_PATH)
 except Exception as e:
     logger.error(f"Ошибка загрузки модели: {e}")
     model = None
