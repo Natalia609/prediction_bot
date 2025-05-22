@@ -13,7 +13,7 @@ import io
 
 SECRET_TOKEN = "Jt9V3Lp"
 TELEGRAM_TOKEN="7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw"
-PORT = int(os.environ.get('PORT', 5000))
+PORT = int(os.environ.get('PORT', 10000))
 
 # Настройка логирования
 logging.basicConfig(
