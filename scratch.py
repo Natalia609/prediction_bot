@@ -9,10 +9,11 @@ import sqlite3
 import bcrypt
 from flask import Flask, request, abort
 import secrets
-import requests
+import io
 
 SECRET_TOKEN = "Jt9V3Lp"
 TELEGRAM_TOKEN="7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw"
+PORT = int(os.environ.get('PORT', 5000))
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,107 +22,100 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация бота
-bot = telebot.TeleBot("7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw")
+# Инициализация бота и Flask
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+app = Flask(__name__)
 
+# Конфигурация модели
 MODEL_URL = "https://github.com/Natalia609/prediction_bot/releases/download/v1.0.0/people_dolphin_classifier.h5"
 MODEL_PATH = "people_dolphin_classifier.h5"
-# Загрузка модели классификации
+
+
 def download_model():
-    """Скачивает модель из GitHub Releases, если её нет локально"""
+    """Скачивает и кэширует модель"""
     if not os.path.exists(MODEL_PATH):
-        print("Downloading model...")
-        response = requests.get(MODEL_URL, allow_redirects=True)
-        if response.status_code == 200:
+        logger.info("Downloading model...")
+        try:
+            response = requests.get(MODEL_URL, stream=True)
+            response.raise_for_status()
             with open(MODEL_PATH, "wb") as f:
-                f.write(response.content)
-            print("Model downloaded successfully!")
-        else:
-            raise Exception(f"Failed to download model. Status code: {response.status_code}")
-# Загрузка модели при старте приложения
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logger.info("Model downloaded successfully!")
+        except Exception as e:
+            logger.error(f"Model download failed: {e}")
+            raise
+
+
+# Инициализация модели
 try:
     download_model()
     model = tf.keras.models.load_model(MODEL_PATH)
+    logger.info("Model loaded successfully!")
 except Exception as e:
-    logger.error(f"Ошибка загрузки модели: {e}")
+    logger.error(f"Failed to load model: {e}")
     model = None
+    if os.environ.get('REQUIRE_MODEL', 'True') == 'True':
+        exit(1)
 
-app = Flask(__name__)
+
+# Webhook handling
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
+        abort(403)
+
+    if request.content_type == 'application/json':
+        json_data = request.get_json()
+        update = telebot.types.Update.de_json(json_data)
+        bot.process_new_updates([update])
+        return '', 200
+    abort(400)
 
 
 def set_telegram_webhook():
-    WEBHOOK_URL = "https://prediction-bot-1-0753.onrender.com/webhook"
+    webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL')}/webhook"
 
     try:
-        response = request.post(
+        response = requests.post(
             f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook',
             json={
-                'url': WEBHOOK_URL,
+                'url': webhook_url,
                 'secret_token': SECRET_TOKEN,
+                'allowed_updates': ['message', 'callback_query'],
                 'drop_pending_updates': True
             },
             timeout=10
         )
-
-        if response.status_code != 200:
-            logger.error(f"Ошибка регистрации: {response.text}")
-            return False
-
-        result = response.json()
-        if not result.get('ok', False):
-            logger.error(f"Ошибка Telegram API: {result.get('description')}")
-            return False
-
-        logger.info("Вебхук успешно зарегистрирован!")
+        response.raise_for_status()
+        logger.info(f"Webhook set to: {webhook_url}")
         return True
-
     except Exception as e:
-        logger.error(f"Ошибка настройки вебхука: {str(e)}")
+        logger.error(f"Webhook setup error: {e}")
         return False
 
 
-# ------------------------------------
-# Инициализация базы данных
+# Оптимизированная работа с базой данных
 def create_connection():
-    return sqlite3.connect(os.path.join(os.getcwd(), 'users.db'), check_same_thread=False)
+    return sqlite3.connect(
+        os.path.join(os.getcwd(), 'users.db'),
+        check_same_thread=False,
+        timeout=10
+    )
 
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    # Проверка секретного токена
-    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
-        abort(403)
-
-    if request.headers.get('content-type') == 'application/json':
-        json_data = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_data)
-        bot.process_new_updates([update])
-        return '', 200
-    abort(403)
 def init_db():
-    db_path = 'users.db'
-    if os.path.exists(db_path):
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT registered FROM users LIMIT 1")
-            conn.close()
-        except sqlite3.OperationalError:
-            os.remove(db_path)
-            logger.info("Удалена старая база данных из-за ошибки структуры")
-
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            username TEXT,
-            password_hash TEXT,
-            is_admin BOOLEAN DEFAULT 0,
-            prediction_count INTEGER DEFAULT 0,
-            registered BOOLEAN DEFAULT 0
-        )
-    ''')
+    with create_connection() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                username TEXT,
+                password_hash TEXT,
+                is_admin BOOLEAN DEFAULT 0,
+                prediction_count INTEGER DEFAULT 0,
+                registered BOOLEAN DEFAULT 0
+            )
+        ''')
     conn.commit()
     conn.close()
 
@@ -457,69 +451,45 @@ def process_password_reset(message):
 @check_registration
 def handle_photo(message):
     chat_id = message.chat.id
-    temp_file = f"temp/temp_{chat_id}.jpg"
-
     try:
-        # Загрузка изображения
+        # Оптимизированная загрузка изображения в память
         file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
+        downloaded = bot.download_file(file_info.file_path)
 
-        # Сохранение временного файла
-        with open(temp_file, 'wb') as f:
-            f.write(downloaded_file)
+        # Обработка изображения без сохранения на диск
+        img = load_img(io.BytesIO(downloaded), target_size=(200, 200))
+        x = img_to_array(img)
+        x = np.expand_dims(x, axis=0) / 255.0
 
-        # Классификация изображения
+        # Предсказание
         if model:
-            img = load_img(temp_file, target_size=(200, 200))
-            x = img_to_array(img)
-            x = np.expand_dims(x, axis=0)
-            x = x / 255.0
-
             pred = model.predict(x)[0][0]
             result = "дельфин" if pred > 0.5 else "человек"
-            confidence = f"{pred * 100:.1f}%" if pred > 0.5 else f"{(1 - pred) * 100:.1f}%"
-            response = f"🔍 Результат: {result}\n"
+            confidence = pred if pred > 0.5 else 1 - pred
+            response = f"🔍 Результат: {result} ({confidence:.1%})"
         else:
-            response = "❌ Ошибка: модель не загружена"
+            response = "❌ Ошибка модели"
 
         # Обновление статистики
-        conn = create_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
-        conn.commit()
-        conn.close()
+        with create_connection() as conn:
+            conn.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
 
         bot.reply_to(message, response)
 
     except Exception as e:
-        logger.error(f"Ошибка обработки изображения: {e}")
+        logger.error(f"Image processing error: {e}")
         bot.reply_to(message, "❌ Ошибка обработки изображения")
-
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
 
 
 if __name__ == '__main__':
-    # Создание временной директории для загрузок
-    if not os.path.exists('temp'):
-        os.makedirs('temp')
-
-    # Инициализация базы данных
     init_db()
 
-    # Регистрация вебхука при запуске
-    try:
-        set_telegram_webhook()
-        logger.info("Вебхук успешно зарегистрирован")
-    except Exception as e:
-        logger.error(f"Ошибка регистрации вебхука: {e}")
-        exit(1)
-
-    # Запуск Flask-сервера
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        debug=False,  # В продакшене должно быть False!
-        use_reloader=False
-    )
+    if set_telegram_webhook():
+        app.run(
+            host='0.0.0.0',
+            port=PORT,
+            debug=False,
+            use_reloader=False
+        )
+    else:
+        logger.error("Failed to start due to webhook setup error")
