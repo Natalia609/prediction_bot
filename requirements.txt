@@ -7,3 +7,4 @@ bcrypt==4.0.1
 python-dotenv==0.21.0
 keras==2.9.0
 gunicorn==21.2.0
+werkzeug==2.0.3
