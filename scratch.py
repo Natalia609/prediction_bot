@@ -10,7 +10,7 @@ import bcrypt
 from flask import Flask, request, abort
 import secrets
 
-SECRET_TOKEN = "ваш_уникальный_секрет_123"
+SECRET_TOKEN = "Jt9V3Lp"
 TELEGRAM_TOKEN="7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw"
 
 # Настройка логирования
@@ -25,7 +25,8 @@ bot = telebot.TeleBot("7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw")
 
 # Загрузка модели классификации
 try:
-    model = tf.keras.models.load_model('people_dolphin_classifier.h5')
+    model_path = os.path.join(os.getcwd(), 'people_dolphin_classifier.h5')
+    model = tf.keras.models.load_model(model_path)
     logger.info("Модель успешно загружена")
 except Exception as e:
     logger.error(f"Ошибка загрузки модели: {e}")
@@ -35,8 +36,7 @@ app = Flask(__name__)
 
 
 def set_telegram_webhook():
-    WEBHOOK_URL = "https://ваш-домен/webhook"  # Замените на реальный URL
-    SECRET_TOKEN = secrets.token_urlsafe(32)  # Должен совпадать в обработчике
+    WEBHOOK_URL = "https://prediction-bot-1-0753.onrender.com/webhook"
 
     try:
         response = request.post(
@@ -69,10 +69,7 @@ def set_telegram_webhook():
 # ------------------------------------
 # Инициализация базы данных
 def create_connection():
-    return sqlite3.connect('users.db', check_same_thread=False)
-
-
-app = Flask(__name__)
+    return sqlite3.connect(os.path.join(os.getcwd(), 'users.db'), check_same_thread=False)
 
 
 @app.route('/webhook', methods=['POST'])
