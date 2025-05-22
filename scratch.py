@@ -26,7 +26,7 @@ bot = telebot.TeleBot("7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw")
 # Загрузка модели классификации
 try:
     model_path = os.path.join(os.getcwd(), 'people_dolphin_classifier.h5')
-model = tf.keras.models.load_model(model_path)
+    model = tf.keras.models.load_model(model_path)
     logger.info("Модель успешно загружена")
 except Exception as e:
     logger.error(f"Ошибка загрузки модели: {e}")
