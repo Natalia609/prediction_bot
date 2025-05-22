@@ -36,6 +36,8 @@ def download_model():
     if not os.path.exists(MODEL_PATH):
         logger.info("Downloading model...")
         try:
+             import requests 
+            
             response = requests.get(MODEL_URL, stream=True)
             response.raise_for_status()
             with open(MODEL_PATH, "wb") as f:
