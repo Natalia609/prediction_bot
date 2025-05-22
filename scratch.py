@@ -10,7 +10,7 @@ import bcrypt
 from flask import Flask, request, abort
 import secrets
 
-SECRET_TOKEN = "ваш_уникальный_секрет_123"
+SECRET_TOKEN = "Jt9V3Lp"
 TELEGRAM_TOKEN="7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw"
 
 # Настройка логирования
