@@ -36,14 +36,17 @@ def download_model():
     if not os.path.exists(MODEL_PATH):
         logger.info("Downloading model...")
         try:
-             import requests 
+            # ▼▼▼ Все строки внутри try должны иметь одинаковый отступ ▼▼▼
+            import requests  # <-- 4 пробела
             
             response = requests.get(MODEL_URL, stream=True)
             response.raise_for_status()
+            
             with open(MODEL_PATH, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             logger.info("Model downloaded successfully!")
+            
         except Exception as e:
             logger.error(f"Model download failed: {e}")
             raise
