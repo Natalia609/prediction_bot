@@ -34,7 +34,20 @@ PORT = int(os.environ.get('PORT', 10000))  # Render использует пор�
 THRESHOLD = 45  # Пороговое значение стандартного отклонения
 IMAGE_SIZE = (200, 200)  # Размер для ресайза изображений
 
+def check_telegram_connection():
+    try:
+        import requests
+        response = requests.get(
+            f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/getMe",
+            timeout=5
+        )
+        logger.info(f"Проверка подключения к Telegram API: {response.status_code}")
+        logger.debug(f"Ответ API: {response.text}")
+    except Exception as e:
+        logger.error(f"Ошибка подключения: {str(e)}")
 
+# Вызовите при старте
+check_telegram_connection()
 # Инициализация базы данных
 def create_connection():
     return sqlite3.connect('users.db', check_same_thread=False)
@@ -157,19 +170,20 @@ def send_welcome(message):
                          "👋 Добро пожаловать! Для использования бота необходимо зарегистрироваться.\n"
                          "Используйте команду /register для создания аккаунта")
 
-@bot.message_handler(commands=['ping'])
-def ping_handler(message):
+@bot.message_handler(func=lambda m: m.text.lower() == 'ping')
+def handle_ping(message):
     try:
-        logger.info("Ping command received")
-        bot.reply_to(message, "🏓 Pong!")
-        logger.info("Pong response sent")
+        logger.info(f"Начало обработки ping для {message.chat.id}")
+        
+        # Отправка сообщения с логированием
+        sent_msg = bot.reply_to(message, "🏓 Pong!")
+        logger.info(f"Сообщение отправлено. ID: {sent_msg.message_id}")
+        
+        # Проверка доставки
+        logger.debug(f"Статус отправки: {sent_msg}")
     except Exception as e:
-        logger.error(f"Ping failed: {e}")
-
-def show_main_menu(chat_id):
-    text = "🏠 Главное меню\nВыберите действие:"
-    bot.send_message(chat_id, text, reply_markup=get_main_menu_keyboard(chat_id))
-
+        logger.error(f"Ошибка при отправке: {str(e)}")
+        logger.exception("Трассировка ошибки:")
 
 @bot.message_handler(commands=['register'])
 def register_user(message):
