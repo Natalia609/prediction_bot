@@ -7,7 +7,7 @@ from telebot import types, apihelper
 import sqlite3
 import bcrypt
 import time
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests  # Добавить эту строку в секцию импортов
 
 TOKEN = '7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA'
