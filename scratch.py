@@ -418,18 +418,18 @@ def handle_admin(chat_id):
     send_message(chat_id, "⚙️ Админ-панель:", reply_markup=admin_menu)
 
 def handle_admin_action(chat_id, text):
-    if text == "📋 список пользователей":
+    if text == "📋 Список пользователей":
         show_users_list(chat_id)
-    elif text == "❌ удалить пользователя":
+    elif text == "❌ Удалить пользователя":
         user_states[chat_id] = UserState.AWAIT_USER_ID_DELETE
         send_message(chat_id, "Введите ID пользователя для удаления:")
-    elif text == "👑 добавить администратора":
+    elif text == "👑 Добавить администратора":
         user_states[chat_id] = UserState.AWAIT_USER_ID_PROMOTE
         send_message(chat_id, "Введите ID пользователя для повышения:")
-    elif text == "🔄 сбросить пароль":
+    elif text == "🔄 Сбросить пароль":
         user_states[chat_id] = UserState.AWAIT_USER_ID_RESET
         send_message(chat_id, "Введите ID пользователя для сброса пароля:")
-    elif text == "🔙 в главное меню":
+    elif text == "🔙 В главное меню":
         del user_states[chat_id]
         set_main_menu(chat_id)
 
