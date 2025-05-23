@@ -232,35 +232,44 @@ def start_registration(chat_id):
 
 def process_password(chat_id, password, username):
      # Добавляем проверку на существующего администратора
-    with create_connection() as conn:
-        cursor = conn.cursor()
-        
-        # Атомарная проверка наличия администраторов
-        cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
-        existing_admin = cursor.fetchone()
-        is_admin_flag = 0 if existing_admin else 1
-        
-        # Проверка уникальности пользователя
-        cursor.execute("SELECT id FROM users WHERE id=?", (chat_id,))
-        if cursor.fetchone():
-            send_message(chat_id, "❌ Вы уже зарегистрированы!")
+    try:
+        # Проверка силы пароля перед регистрацией
+        if not (len(password) >= 8 and any(c.isalpha() for c in password) and any(c.isdigit() for c in password):
+            send_message(chat_id, "❌ Пароль должен содержать минимум 8 символов, буквы и цифры!")
             return
-            
-        # Сохраняем данные
-        cursor.execute('''
-            INSERT INTO users (id, username, password_hash, is_admin, registered)
-            VALUES (?, ?, ?, ?, 1)
-        ''', (chat_id, username, hash_password(password), is_admin_flag))
-        conn.commit()
 
-    # Отправляем подтверждение
-    text = "🎉 Регистрация успешна!"
-    if is_admin_flag:
-        text += "\n⚡ Вы стали администратором!"
-        logger.info(f"Новый администратор: {chat_id} ({username})")
-        
-    send_message(chat_id, text)
-    set_main_menu(chat_id)
+        with create_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Атомарная проверка администраторов
+            cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
+            is_admin_flag = 0 if cursor.fetchone() else 1
+            
+            # Проверка существующей регистрации
+            cursor.execute("SELECT id FROM users WHERE id=?", (chat_id,))
+            if cursor.fetchone():
+                send_message(chat_id, "❌ Вы уже зарегистрированы!")
+                return
+
+            # Регистрация пользователя
+            cursor.execute('''
+                INSERT INTO users (id, username, password_hash, is_admin, registered)
+                VALUES (?, ?, ?, ?, 1)
+            ''', (chat_id, username, hash_password(password), is_admin_flag))
+            conn.commit()
+
+        # Удаление состояния и показ меню
+        if chat_id in user_states:
+            del user_states[chat_id]
+            
+        logger.info(f"Успешная регистрация: {chat_id}")
+        text = "🎉 Регистрация успешна!"
+         send_message(chat_id, text)
+        set_main_menu(chat_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка регистрации: {str(e)}")
+        send_message(chat_id, "❌ Ошибка при регистрации. Попробуйте позже.")
     
 def handle_command(chat_id, command, message):
     if command == '/start':
