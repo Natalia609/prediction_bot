@@ -314,14 +314,14 @@ def handle_command(chat_id, command, message):
         start_login(chat_id)
     elif command == '/logout':
         handle_logout(chat_id)
-    elif command == '/admin':
+    elif command == "👑 Админ-панель":
         handle_admin(chat_id)
     elif command == '📸 Классифицировать изображение':
         handle_predict_image(chat_id)
     elif command == '📊 Моя статистика':
         handle_stats(chat_id)
     elif command == '🆘 Помощь':
-        handle_help(chat_id)
+        handle_help(chat_id)    
     else:
         send_message(chat_id, "❌ Неизвестная команда")
 def handle_start(chat_id):
@@ -384,20 +384,7 @@ def check_auth(chat_id):
         return False
     return True
 
-def handle_predict_image(chat_id):
-    if not check_auth(chat_id):
-        return
-    # Остальная логика
 
-def handle_stats(chat_id):
-    if not check_auth(chat_id):
-        return
-    # Остальная логика
-
-def handle_admin(chat_id):
-    if not check_auth(chat_id):
-        return
-    # Остальная логика
 def handle_logout(chat_id):
     # Удаляем из обоих множеств
     if chat_id in logged_users:
@@ -469,6 +456,9 @@ def handle_predict_image(chat_id):
     send_message(chat_id, "📸 Отправьте изображение для классификации")
 
 def handle_stats(chat_id):
+    if not is_registered(chat_id):
+        send_message(chat_id, "❌ Необходима регистрация!")
+        return
     with create_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT prediction_count FROM users WHERE id=?", (chat_id,))
@@ -476,6 +466,9 @@ def handle_stats(chat_id):
     send_message(chat_id, f"📊 Вы выполнили {count} классификаций")
 
 def handle_help(chat_id):
+    if not is_registered(chat_id):
+        send_message(chat_id, "❌ Необходима регистрация!")
+        return
     help_text = (
         "🆘 Список команд:\n"
         "/start - Главное меню\n"
