@@ -7,6 +7,7 @@ from telebot import types, apihelper
 import sqlite3
 from telegram import ReplyKeyboardMarkup
 import bcrypt
+import json
 import time
 from flask import Flask, request, jsonify
 import requests  # Добавить эту строку в секцию импортов
@@ -144,12 +145,13 @@ def send_message(chat_id, text, reply_markup=None):
         return False
         
 def create_keyboard(buttons, resize=True, one_time=False):
-    """Создает клавиатуру из переданного массива кнопок"""
-    return ReplyKeyboardMarkup(
-        keyboard=buttons,
-        resize_keyboard=resize,
-        one_time_keyboard=one_time
-    )
+    """Создает клавиатуру в формате Telegram API"""
+    return {
+        'keyboard': buttons,
+        'resize_keyboard': resize,
+        'one_time_keyboard': one_time
+    }
+
 
 def set_main_menu(chat_id):
     """Обновление главного меню"""
@@ -194,17 +196,16 @@ def webhook_handler():
         logger.debug(f"Получено обновление: {data}")
         
         if 'message' in data:
-            message = data['message']  # Сохраняем message в переменную
+            message = data['message']
             chat = message.get('chat', {})
             chat_id = chat.get('id')
-            text = message.get('text', '')
+            text = message.get('text', '').strip()
             username = message.get('from', {}).get('username')
 
-            # Обрабатываем только если есть chat_id
             if chat_id:
-                # Проверяем состояние пользователя ПЕРЕД обработкой команд
-                if user_states.get(chat_id) == UserState.AWAIT_PASSWORD_REGISTER:
-                    process_password(chat_id, text, username)
+                # Передаем message в handle_user_state
+                if user_states.get(chat_id):
+                    handle_user_state(chat_id, text, message)  # Добавляем message
                 else:
                     handle_command(chat_id, text, message)
             
@@ -212,6 +213,7 @@ def webhook_handler():
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {str(e)}", exc_info=True)
         return jsonify({'status': 'error'}), 500
+
 # ... предыдущий код остаётся без изменений ...
 def start_registration(chat_id):
     if is_registered(chat_id):
@@ -222,9 +224,10 @@ def start_registration(chat_id):
     send_message(chat_id, "🔐 Придумайте пароль (минимум 8 символов, буквы и цифры):")
 
 def process_password(chat_id, password, username):
-    if not (any(c.isalpha() for c in password) and any(c.isdigit() for c in password) and len(password) >= 8):
-        send_message(chat_id, "❌ Пароль слишком простой!")
+    if not username:
+        send_message(chat_id, "❌ Не удалось определить ваш username!")
         return
+
 
     with create_connection() as conn:
         cursor = conn.cursor()
@@ -293,8 +296,10 @@ def process_login(chat_id, password):
 def handle_logout(chat_id):
     if chat_id in user_states:
         del user_states[chat_id]
+    
+    # Создаем клавиатуру один раз
     keyboard = create_keyboard([], resize=False)
-    send_message(chat_id, "🚪 Вы вышли из системы", create_keyboard([]))
+    send_message(chat_id, "🚪 Вы вышли из системы", reply_markup=keyboard)
 
 def handle_admin(chat_id):
     if not is_admin(chat_id):
@@ -419,11 +424,13 @@ def handle_message(message):
     else:
         send_message(chat_id, f"Вы написали: {text}")
 
-def handle_user_state(chat_id, text):
+def handle_user_state(chat_id, text, message):  # Добавляем параметр message
     state = user_states.get(chat_id)
     
     if state == UserState.AWAIT_PASSWORD_REGISTER:
-        process_password(chat_id, text, message.get('from', {}).get('username'))
+        # Используем переданный message
+        username = message.get('from', {}).get('username', 'unknown')
+        process_password(chat_id, text, username)
     elif state == UserState.AWAIT_PASSWORD_LOGIN:
         process_login(chat_id, text)
     elif state == UserState.AWAIT_ADMIN_ACTION:
