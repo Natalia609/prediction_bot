@@ -256,11 +256,11 @@ def handle_command(chat_id, command, message):
         handle_logout(chat_id)
     elif command == '/admin':
         handle_admin(chat_id)
-    elif command == '📸 классифицировать изображение':
+    elif command == '📸 Классифицировать изображение':
         handle_predict_image(chat_id)
-    elif command == '📊 моя статистика':
+    elif command == '📊 Моя статистика':
         handle_stats(chat_id)
-    elif command == '🆘 помощь':
+    elif command == '🆘 Помощь':
         handle_help(chat_id)
     else:
         send_message(chat_id, "❌ Неизвестная команда")
