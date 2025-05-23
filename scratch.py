@@ -372,8 +372,7 @@ def process_login(chat_id, password):
 def is_logged_in(chat_id):
     """Проверка статуса авторизации с учетом всех условий"""
     # Основная проверка авторизации и состояния
-    if chat_id in logged_users and user_states.get(chat_id) != UserState.LOGGED_OUT:
-        return True
+    
     
     # Резервная проверка в БД для случаев перезапуска сервера
     try:
