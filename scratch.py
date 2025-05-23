@@ -437,93 +437,81 @@ def handle_photo(message):
     temp_output = os.path.join(TEMP_DIR, f'output_{chat_id}_{timestamp}.jpg')
 
     try:
-        # Создаем папку temp если не существует
         os.makedirs(TEMP_DIR, exist_ok=True)
-        # Загрузка изображения
+        
+        # Загрузка и сохранение изображения
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-
-        # Сохранение оригинального изображения
         with open(temp_input, 'wb') as f:
             f.write(downloaded_file)
 
         # Обработка изображения
-        img = Image.open(temp_input)
-        img = img.convert('RGB')
-
-        # Инвертирование цветов
+        img = Image.open(temp_input).convert('RGB')
         inverted = Image.eval(img, lambda x: 255 - x)
-
-        # Сохранение инвертированного изображения
         inverted.save(temp_output, "JPEG")
 
-        # Анализ для классификации
+        # Анализ и классификация
         gray = inverted.convert('L')
         gray_array = np.array(gray)
         std = gray_array.std()
         result = "дельфин" if std < THRESHOLD else "человек"
 
-        # Отправка результата и изображения
+        # Отправка результата
         with open(temp_output, 'rb') as photo:
             bot.send_photo(
                 chat_id,
-                photo
+                photo,
+                caption=f"🔍 Результат: {result}\n"
+                        f"📊 Стандартное отклонение: {std:.1f}"
             )
 
         # Обновление статистики
-        conn = create_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
-        conn.commit()
-        conn.close()
-
+        with create_connection() as conn:
+            conn.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
 
     except Exception as e:
-        logger.error(f"Ошибка обработки изображения: {e}")
+        logger.error(f"Ошибка обработки изображения: {str(e)}", exc_info=True)
         bot.reply_to(message, "❌ Ошибка обработки изображения")
 
-
     finally:
-        # Удаление временных файлов
+        # Очистка временных файлов
         for file_path in [temp_input, temp_output]:
-            if os.path.exists(file_path):
-                try:
+            try:
+                if os.path.exists(file_path):
                     os.remove(file_path)
-                except Exception as e:
-                    logger.error(f"Ошибка удаления файла {file_path}: {e}")
- # Веб-хук обработчик
+            except Exception as e:
+                logger.error(f"Ошибка удаления файла: {str(e)}")
 
+# Веб-хук обработчик
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    logger.info("Получен запрос на /webhook")
     try:
         json_data = request.get_json()
-        logger.debug(f"Raw JSON: {json_data}")
-        
+        if not json_data:
+            logger.error("Пустой запрос")
+            return "Bad Request", 400
+            
         update = telebot.types.Update.de_json(json_data)
         if update:
-            logger.info(f"Обработка update_id: {update.update_id}")
             bot.process_new_updates([update])
-            return "OK", 200
-        return "Empty update", 400
+        return "OK", 200
     except Exception as e:
-        logger.error(f"Ошибка: {str(e)}", exc_info=True)
+        logger.error(f"Ошибка вебхука: {str(e)}", exc_info=True)
         return "Server Error", 500
 
-    @app.route('/')
-    def home():
-
-        return "Telegram Bot is Running!"
-
+@app.route('/')
+def home():
+    return "Telegram Bot is Running!", 200
 
 if __name__ == '__main__':
     os.makedirs(TEMP_DIR, exist_ok=True)
     init_db()
     
-    # Настройка вебхука
-    bot.remove_webhook()
-    time.sleep(1)
-    bot.set_webhook("https://prediction-bot-1-0753.onrender.com/webhook")  # Добавьте кавычки
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(WEBHOOK_URL)
+        logger.info(f"Webhook установлен: {WEBHOOK_URL}")
+    except Exception as e:
+        logger.error(f"Ошибка настройки webhook: {str(e)}")
     
-    # Запуск приложения
     app.run(host='0.0.0.0', port=PORT)
