@@ -307,7 +307,6 @@ def process_password(chat_id, password, username):
         send_message(chat_id, "❌ Внутренняя ошибка сервера. Попробуйте позже.")
     
 def handle_command(chat_id, command, message):
-    def handle_command(chat_id, command, message):
     # Блокировка всех команд кроме регистрации/входа
     if command not in ['/start', '/register', '/login']:
         if not check_auth(chat_id):
