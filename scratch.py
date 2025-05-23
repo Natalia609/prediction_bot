@@ -139,7 +139,10 @@ def check_registration(func):
         return func(message)
 
     return wrapper
-
+    
+@bot.middleware_handler(update_types=['message'])
+def log_messages(bot_instance, message):
+    logger.info(f"Received message: {message.text} | Chat ID: {message.chat.id} | User: {message.from_user.username}")
 
 # Обработчики команд
 @bot.message_handler(commands=['start'])
@@ -211,7 +214,15 @@ def process_password(message):
     bot.send_message(chat_id, text)
     show_main_menu(chat_id)
 
-
+@bot.message_handler(content_types=['text'])
+def text_handler(message):
+    try:
+        response = f"Вы написали: {message.text}"
+        logger.info(f"Preparing response: {response}")
+        bot.send_message(message.chat.id, response)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        
 @bot.message_handler(commands=['login'])
 def login_user(message):
     chat_id = message.chat.id
