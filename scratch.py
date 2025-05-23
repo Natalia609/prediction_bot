@@ -480,15 +480,21 @@ def handle_photo(message):
  # Веб-хук обработчик
 
     @app.route('/webhook', methods=['POST'])
-    def webhook():
-        logger.info("Incoming webhook request")  # Добавьте логирование
-        if request.headers.get('content-type') == 'application/json':
-            json_data = request.get_data().decode('utf-8')
-            update = telebot.types.Update.de_json(json_data)
+def webhook():
+    logger.info("Получен запрос на /webhook")
+    try:
+        json_data = request.get_json()
+        logger.debug(f"Raw JSON: {json_data}")
+        
+        update = telebot.types.Update.de_json(json_data)
+        if update:
+            logger.info(f"Обработка update_id: {update.update_id}")
             bot.process_new_updates([update])
-            return 'OK', 200
-        logger.error("Invalid request content-type")
-        return 'Invalid request', 403
+            return "OK", 200
+        return "Empty update", 400
+    except Exception as e:
+        logger.error(f"Ошибка: {str(e)}", exc_info=True)
+        return "Server Error", 500
 
     @app.route('/')
     def home():
