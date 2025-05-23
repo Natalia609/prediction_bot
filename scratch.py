@@ -273,12 +273,12 @@ def handle_command(chat_id, command, message):
 
 def handle_start(chat_id):
     if is_registered(chat_id):
-        show_main_menu(chat_id)
+        set_main_menu(chat_id)  # Было show_main_menu
     else:
         send_message(chat_id, 
             "👋 Для использования бота необходимо зарегистрироваться.\n"
             "Используйте /register для создания аккаунта")
-
+        
 def start_login(chat_id):
     if is_registered(chat_id):
         user_states[chat_id] = UserState.AWAIT_PASSWORD_LOGIN
@@ -294,7 +294,7 @@ def process_login(chat_id, password):
         
     if result and check_password(result[0], password):
         send_message(chat_id, "🔓 Вход выполнен!")
-        show_main_menu(chat_id)
+        set_main_menu(chat_id)  # Было show_main_menu
     else:
         send_message(chat_id, "❌ Неверный пароль!")
     del user_states[chat_id]
@@ -335,7 +335,7 @@ def handle_admin_action(chat_id, text):
         send_message(chat_id, "Введите ID пользователя для сброса пароля:")
     elif text == "🔙 в главное меню":
         del user_states[chat_id]
-        show_main_menu(chat_id)
+        set_main_menu(chat_id)
 
 def show_users_list(chat_id):
     with create_connection() as conn:
