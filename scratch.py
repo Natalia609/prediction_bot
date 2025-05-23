@@ -25,7 +25,7 @@ bot = telebot.TeleBot("7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMP_DIR = os.path.join(BASE_DIR, 'temp')
 DATABASE_PATH = os.path.join(BASE_DIR, 'users.db')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Будет установлен в настройках Render
+WEBHOOK_URL = 'https://prediction-bot-1-0753.onrender.com/webhook'  # Будет установлен в настройках Render
 PORT = int(os.environ.get('PORT', 10000))  # Render использует порт 10000 по умолчанию
 
 # Параметры алгоритма
@@ -465,8 +465,7 @@ def handle_photo(message):
                 except Exception as e:
 
                     logger.error(f"Ошибка удаления файла {file_path}: {e}")
-
-    # Веб-хук обработчик
+ # Веб-хук обработчик
 
     @app.route('/webhook', methods=['POST'])
     def webhook():
@@ -487,23 +486,15 @@ def handle_photo(message):
 
         return "Telegram Bot is Running!"
 
-    if __name__ == '__main__':
-        # Инициализация необходимых директорий
 
-        os.makedirs(TEMP_DIR, exist_ok=True)
-
-        # Инициализация базы данных
-
-        init_db()
-
-        # Настройка вебхука
-
-        bot.remove_webhook()
-
-        time.sleep(1)
-
-        bot.set_webhook(url=WEBHOOK_URL)
-
-        # Запуск приложения
-
-        app.run(host='0.0.0.0', port=PORT)
+if __name__ == '__main__':
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    init_db()
+    
+    # Настройка вебхука
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.set_webhook(url=WEBHOOK_URL)  # Добавьте кавычки
+    
+    # Запуск приложения
+    app.run(host='0.0.0.0', port=PORT)
