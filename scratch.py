@@ -157,6 +157,14 @@ def send_welcome(message):
                          "👋 Добро пожаловать! Для использования бота необходимо зарегистрироваться.\n"
                          "Используйте команду /register для создания аккаунта")
 
+@bot.message_handler(commands=['ping'])
+def ping_handler(message):
+    try:
+        logger.info("Ping command received")
+        bot.reply_to(message, "🏓 Pong!")
+        logger.info("Pong response sent")
+    except Exception as e:
+        logger.error(f"Ping failed: {e}")
 
 def show_main_menu(chat_id):
     text = "🏠 Главное меню\nВыберите действие:"
