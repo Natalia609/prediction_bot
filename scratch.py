@@ -148,9 +148,9 @@ def send_message(chat_id, text, reply_markup=None):
 def create_keyboard(buttons, resize=True, one_time=False):
     """Создает клавиатуру в формате Telegram API"""
     return {
-        'keyboard': buttons,
-        'resize_keyboard': resize,
-        'one_time_keyboard': one_time
+        "keyboard": buttons,
+        "resize_keyboard": resize,
+        "one_time_keyboard": one_time
     }
 
 
@@ -340,16 +340,23 @@ def handle_command(chat_id, command, message):
         handle_help(chat_id)    
     else:
         send_message(chat_id, "❌ Неизвестная команда")
+        
 def handle_start(chat_id):
     if is_registered(chat_id):
-            if is_logged_in(chat_id):
-                set_main_menu(chat_id)
-            else:
-                send_message(chat_id, "🔒 Требуется вход. Используйте /login")
+        if is_logged_in(chat_id):
+            set_main_menu(chat_id)
+        else:
+            # Добавляем клавиатуру для входа
+            keyboard = create_keyboard([["/login"]])
+            send_message(chat_id, "🔒 Требуется вход. Используйте /login", reply_markup=keyboard)
     else:
-        send_message(chat_id, 
-            "👋 Для использования бота необходимо зарегистрироваться.\n"
-            "Используйте /register для создания аккаунта")
+        # Клавиатура для регистрации
+        keyboard = create_keyboard([["/register"]])
+        send_message(
+            chat_id, 
+            "👋 Для использования бота необходимо зарегистрироваться.\nИспользуйте /register", 
+            reply_markup=keyboard
+        )
         
 def start_login(chat_id):
     if chat_id in user_states:
@@ -418,23 +425,18 @@ def check_auth(chat_id):
 
 
 def handle_logout(chat_id):
-    """Полный сброс состояния и клавиатуры"""
-    # Очищаем данные авторизации
     if chat_id in logged_users:
         logged_users.remove(chat_id)
-    
-    # Сбрасываем все состояния
     if chat_id in user_states:
         del user_states[chat_id]
     
-    # Отправляем клавиатуру с базовыми командами
-    auth_keyboard = create_keyboard([
-        [{"text": "/register"}, {"text": "/login"}]
-    ])
-    send_message(chat_id, "🚪 Вы вышли из системы. Для использования бота:\n"
-                          "➡️ Зарегистрируйтесь /register\n"
-                          "➡️ Или войдите /login", 
-                 reply_markup=keyboard)
+    # Создаем клавиатуру с кнопками регистрации и входа
+    keyboard = create_keyboard([["/register", "/login"]])
+    send_message(
+        chat_id, 
+        "🚪 Вы вышли из системы. Для продолжения:", 
+        reply_markup=keyboard
+    )
     
 def handle_admin(chat_id):
     # Добавляем проверку авторизации
