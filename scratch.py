@@ -230,24 +230,34 @@ def start_registration(chat_id):
     send_message(chat_id, "🔐 Придумайте пароль (минимум 8 символов, буквы и цифры):")
 
 def process_password(chat_id, password, username):
-    if not username:
-        send_message(chat_id, "❌ Не удалось определить ваш username!")
-        return
-
-
+     # Добавляем проверку на существующего администратора
     with create_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
-        is_admin_flag = 0 if cursor.fetchone() else 1
         
+        # Атомарная проверка наличия администраторов
+        cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
+        existing_admin = cursor.fetchone()
+        is_admin_flag = 0 if existing_admin else 1
+        
+        # Проверка уникальности пользователя
+        cursor.execute("SELECT id FROM users WHERE id=?", (chat_id,))
+        if cursor.fetchone():
+            send_message(chat_id, "❌ Вы уже зарегистрированы!")
+            return
+            
+        # Сохраняем данные
         cursor.execute('''
             INSERT INTO users (id, username, password_hash, is_admin, registered)
             VALUES (?, ?, ?, ?, 1)
         ''', (chat_id, username, hash_password(password), is_admin_flag))
         conn.commit()
 
-    del user_states[chat_id]
-    text = "🎉 Регистрация успешна!" + ("\n⚡ Вы стали администратором!" if is_admin_flag else "")
+    # Отправляем подтверждение
+    text = "🎉 Регистрация успешна!"
+    if is_admin_flag:
+        text += "\n⚡ Вы стали администратором!"
+        logger.info(f"Новый администратор: {chat_id} ({username})")
+        
     send_message(chat_id, text)
     set_main_menu(chat_id)
     
@@ -280,11 +290,16 @@ def handle_start(chat_id):
             "Используйте /register для создания аккаунта")
         
 def start_login(chat_id):
+    if chat_id in user_states:
+        send_message(chat_id, "⚠️ Завершите текущую операцию!")
+        return
+        
     if is_registered(chat_id):
         user_states[chat_id] = UserState.AWAIT_PASSWORD_LOGIN
         send_message(chat_id, "🔑 Введите ваш пароль:")
     else:
         send_message(chat_id, "❌ Вы не зарегистрированы! Используйте /register")
+
 
 def process_login(chat_id, password):
     with create_connection() as conn:
@@ -308,18 +323,26 @@ def handle_logout(chat_id):
     send_message(chat_id, "🚪 Вы вышли из системы", reply_markup=keyboard)
 
 def handle_admin(chat_id):
+    # Добавляем проверку авторизации
+    if not is_registered(chat_id):
+        send_message(chat_id, "❌ Сначала выполните вход!")
+        return
+        
     if not is_admin(chat_id):
         send_message(chat_id, "⛔ Доступ запрещен!")
         return
     
+    # Убедимся, что клавиатура создается правильно
     admin_buttons = [
         [{"text": "📋 Список пользователей"}, {"text": "❌ Удалить пользователя"}],
         [{"text": "👑 Добавить администратора"}, {"text": "🔄 Сбросить пароль"}],
         [{"text": "🔙 В главное меню"}]
     ]
     admin_menu = create_keyboard(admin_buttons)
+    
+    # Обновляем состояние
     user_states[chat_id] = UserState.AWAIT_ADMIN_ACTION
-    send_message(chat_id, "⚙️ Админ-панель:", admin_menu)
+    send_message(chat_id, "⚙️ Админ-панель:", reply_markup=admin_menu)
 
 def handle_admin_action(chat_id, text):
     if text == "📋 список пользователей":
