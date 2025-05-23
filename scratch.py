@@ -100,7 +100,6 @@ def is_password_strong(password):
 
 
 def is_registered(chat_id):
-    def is_registered(chat_id):
     try:
         conn = create_connection()
         cursor = conn.cursor()
