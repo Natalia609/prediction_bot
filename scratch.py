@@ -444,41 +444,29 @@ def handle_photo(message):
 
 
     except Exception as e:
-
         logger.error(f"Ошибка обработки изображения: {e}")
-
         bot.reply_to(message, "❌ Ошибка обработки изображения")
 
 
     finally:
-
         # Удаление временных файлов
-
         for file_path in [temp_input, temp_output]:
-
             if os.path.exists(file_path):
-
                 try:
-
                     os.remove(file_path)
-
                 except Exception as e:
-
                     logger.error(f"Ошибка удаления файла {file_path}: {e}")
  # Веб-хук обработчик
 
     @app.route('/webhook', methods=['POST'])
     def webhook():
-
+        logger.info("Incoming webhook request")  # Добавьте логирование
         if request.headers.get('content-type') == 'application/json':
             json_data = request.get_data().decode('utf-8')
-
             update = telebot.types.Update.de_json(json_data)
-
             bot.process_new_updates([update])
-
             return 'OK', 200
-
+        logger.error("Invalid request content-type")
         return 'Invalid request', 403
 
     @app.route('/')
@@ -494,7 +482,7 @@ if __name__ == '__main__':
     # Настройка вебхука
     bot.remove_webhook()
     time.sleep(1)
-    bot.set_webhook(url=WEBHOOK_URL)  # Добавьте кавычки
+    bot.set_webhook("https://prediction-bot-1-0753.onrender.com/webhook")  # Добавьте кавычки
     
     # Запуск приложения
     app.run(host='0.0.0.0', port=PORT)
