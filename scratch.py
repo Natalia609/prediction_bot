@@ -84,6 +84,27 @@ def init_db():
 
 init_db()
 
+def send_telegram(chat_id, text, reply_markup=None):
+    """Отправка сообщения через Telegram API"""
+    url = 'https://api.telegram.org/bot7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA/' + 'sendMessage'
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML'
+    }
+    
+    if reply_markup:
+        payload['reply_markup'] = reply_markup
+        
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        logger.info(f"Сообщение отправлено в {chat_id}: {text[:50]}...")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка отправки: {str(e)}")
+        return False
+
 
 # Вспомогательные функции
 def hash_password(password):
@@ -187,13 +208,13 @@ def send_welcome(message):
 def handle_ping(message):
     try:
         logger.info(f"Начало обработки ping для {message.chat.id}")
-        
+        chat_id = message.chat.id
         # Отправка сообщения с логированием
-        sent_msg = bot.reply_to(message, "🏓 Pong!")
-        logger.info(f"Сообщение отправлено. ID: {sent_msg.message_id}")
+        send_telegram(chat_id, "🏓 Pong!")
+        
         
         # Проверка доставки
-        logger.debug(f"Статус отправки: {sent_msg}")
+       )
     except Exception as e:
         logger.error(f"Ошибка при отправке: {str(e)}")
         logger.exception("Трассировка ошибки:")
