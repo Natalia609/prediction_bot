@@ -168,7 +168,8 @@ def set_main_menu(chat_id):
     
     keyboard = create_keyboard(buttons)
     send_message(chat_id, "🏠 Главное меню\nВыберите действие:", reply_markup=keyboard)
-
+    
+logged_users = set()  # Множество для отслеживания авторизованных пользователей
 # Состояния пользователей
 class UserState:
     AWAIT_PASSWORD_REGISTER = 1
@@ -177,6 +178,7 @@ class UserState:
     AWAIT_USER_ID_DELETE = 4
     AWAIT_USER_ID_PROMOTE = 5
     AWAIT_USER_ID_RESET = 6
+    LOGGED_IN = 7 
 
 
 user_states = {}
@@ -353,16 +355,27 @@ def process_login(chat_id, password):
         
     if result and check_password(result[0], password):
         logged_users.add(chat_id)  # Добавляем в авторизованные
+        user_states[chat_id] = UserState.LOGGED_IN  # Устанавливаем состояние
         send_message(chat_id, "🔓 Вход выполнен!")
         set_main_menu(chat_id)
     else:
         send_message(chat_id, "❌ Неверный пароль!")
-    if chat_id in user_states:
+    if chat_id in user_states and user_states[chat_id] == UserState.AWAIT_PASSWORD_LOGIN:
         del user_states[chat_id]
+        
 def is_logged_in(chat_id):
-    return chat_id in logged_users
+    """Проверка статуса авторизации с резервной проверкой в БД"""
+    if chat_id in logged_users:
+        return True
+    
+    # На случай перезапуска сервера
+    with create_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM users WHERE id=? AND registered=1", (chat_id,))
+        return cursor.fetchone() is not None
 
 def check_auth(chat_id):
+    """Универсальная проверка авторизации"""
     if not is_registered(chat_id):
         send_message(chat_id, "⚠️ Сначала зарегистрируйтесь с помощью /register")
         return False
@@ -386,13 +399,14 @@ def handle_admin(chat_id):
         return
     # Остальная логика
 def handle_logout(chat_id):
+    # Удаляем из обоих множеств
     if chat_id in logged_users:
-        logged_users.remove(chat_id)  # Удаляем из авторизованных
+        logged_users.remove(chat_id)
     if chat_id in user_states:
         del user_states[chat_id]
     
     keyboard = create_keyboard([], resize=False)
-    send_message(chat_id, "🚪 Вы вышли из системы. Для продолжения войдите или зарегистрируйтесь.", reply_markup=keyboard)
+    send_message(chat_id, "🚪 Вы вышли из системы. Для продолжения войдите (/login) или зарегистрируйтесь (/register).", reply_markup=keyboard)
 
 def handle_admin(chat_id):
     # Добавляем проверку авторизации
