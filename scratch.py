@@ -8,6 +8,7 @@ import sqlite3
 import bcrypt
 import time
 from flask import Flask, request
+import requests  # Добавить эту строку в секцию импортов
 
 # Настройка Flask-приложения
 app = Flask(__name__)
