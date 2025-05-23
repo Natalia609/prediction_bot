@@ -482,7 +482,7 @@ if __name__ == '__main__':
     # Настройка вебхука
     bot.remove_webhook()
     time.sleep(1)
-    bot.set_webhook("https://prediction-bot-1-0753.onrender.com")  # Добавьте кавычки
+    bot.set_webhook("https://prediction-bot-1-0753.onrender.com/webhook")  # Добавьте кавычки
     
     # Запуск приложения
     app.run(host='0.0.0.0', port=PORT)
