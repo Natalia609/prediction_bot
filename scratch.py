@@ -322,12 +322,12 @@ def handle_command(chat_id, command, message):
         handle_help(chat_id)
     else:
         send_message(chat_id, "❌ Неизвестная команда")
-
-if is_registered(chat_id):
-        if is_logged_in(chat_id):
-            set_main_menu(chat_id)
-        else:
-            send_message(chat_id, "🔒 Требуется вход. Используйте /login")
+def handle_start(chat_id):
+    if is_registered(chat_id):
+            if is_logged_in(chat_id):
+                set_main_menu(chat_id)
+            else:
+                send_message(chat_id, "🔒 Требуется вход. Используйте /login")
     else:
         send_message(chat_id, 
             "👋 Для использования бота необходимо зарегистрироваться.\n"
