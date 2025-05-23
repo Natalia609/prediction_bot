@@ -194,7 +194,35 @@ def webhook_handler():
         return jsonify({'status': 'error'}), 500
 
 # ... предыдущий код остаётся без изменений ...
+def start_registration(chat_id):
+    if is_registered(chat_id):
+        send_message(chat_id, "❌ Вы уже зарегистрированы!")
+        return
+    
+    user_states[chat_id] = UserState.AWAIT_PASSWORD_REGISTER
+    send_message(chat_id, "🔐 Придумайте пароль (минимум 8 символов, буквы и цифры):")
 
+def process_password(chat_id, password, username):
+    if not (any(c.isalpha() for c in password) and any(c.isdigit() for c in password) and len(password) >= 8):
+        send_message(chat_id, "❌ Пароль слишком простой!")
+        return
+
+    with create_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
+        is_admin_flag = 0 if cursor.fetchone() else 1
+        
+        cursor.execute('''
+            INSERT INTO users (id, username, password_hash, is_admin, registered)
+            VALUES (?, ?, ?, ?, 1)
+        ''', (chat_id, username, hash_password(password), is_admin_flag))
+        conn.commit()
+
+    del user_states[chat_id]
+    text = "🎉 Регистрация успешна!" + ("\n⚡ Вы стали администратором!" if is_admin_flag else "")
+    send_message(chat_id, text)
+    show_main_menu(chat_id)
+    
 def handle_command(chat_id, command, message):
     if command == '/start':
         handle_start(chat_id)
