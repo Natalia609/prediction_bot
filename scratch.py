@@ -232,7 +232,7 @@ def process_password(chat_id, password, username):
     del user_states[chat_id]
     text = "🎉 Регистрация успешна!" + ("\n⚡ Вы стали администратором!" if is_admin_flag else "")
     send_message(chat_id, text)
-    show_main_menu(chat_id)
+    set_main_menu(chat_id)
     
 def handle_command(chat_id, command, message):
     if command == '/start':
