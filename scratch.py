@@ -100,20 +100,20 @@ def is_password_strong(password):
 
 
 def is_registered(chat_id):
+    def is_registered(chat_id):
     try:
         conn = create_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT registered FROM users WHERE id=?", (chat_id,))
-        result = cursor.fetchone()
+        # Добавляем проверку registered=1
+        cursor.execute("SELECT id FROM users WHERE id=? AND registered=1", (chat_id,))
+        result = cursor.fetchone() is not None
         conn.close()
-        
-        logger.debug(f"Проверка регистрации для {chat_id}: результат={result}")
-        return result and result[0] == 1  # Явная проверка значения
-    
+        logger.debug(f"Проверка регистрации {chat_id}: {result}")
+        return result
     except sqlite3.Error as e:
-        logger.error(f"Database error in is_registered: {e}")
+        logger.error(f"Ошибка БД в is_registered: {e}")
         return False
-
+        
 def is_admin(chat_id):
     try:
         conn = create_connection()
