@@ -197,15 +197,21 @@ def webhook_handler():
         
         if 'message' in data:
             message = data['message']
+            
+            # Обработка фото
+            if 'photo' in message:
+                handle_photo(message)
+                return jsonify({'status': 'ok'}), 200
+            
+            # Обработка текста
             chat = message.get('chat', {})
             chat_id = chat.get('id')
             text = message.get('text', '').strip()
             username = message.get('from', {}).get('username')
 
             if chat_id:
-                # Передаем message в handle_user_state
                 if user_states.get(chat_id):
-                    handle_user_state(chat_id, text, message)  # Добавляем message
+                    handle_user_state(chat_id, text, message)
                 else:
                     handle_command(chat_id, text, message)
             
@@ -443,55 +449,79 @@ def handle_user_state(chat_id, text, message):  # Добавляем парам�
         process_password_reset(chat_id, int(text))
 
 # Обработчик изображений
-def handle_photo(message):
-    chat_id = message['chat']['id']
-    timestamp = int(time.time())
-    temp_input = os.path.join(TEMP_DIR, f'input_{chat_id}_{timestamp}.jpg')
-    temp_output = os.path.join(TEMP_DIR, f'output_{chat_id}_{timestamp}.jpg')
-
+def handle_photo(message_data):
     try:
-        os.makedirs(TEMP_DIR, exist_ok=True)
+        # Извлекаем данные из сообщения
+        chat_id = message_data['chat']['id']
+        photos = message_data.get('photo', [])
         
-        # Загрузка и сохранение изображения
-        file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        with open(temp_input, 'wb') as f:
-            f.write(downloaded_file)
+        if not photos:
+            send_message(chat_id, "❌ Не удалось получить изображение")
+            return
 
-        # Обработка изображения
-        img = Image.open(temp_input).convert('RGB')
-        inverted = Image.eval(img, lambda x: 255 - x)
-        inverted.save(temp_output, "JPEG")
+        # Выбираем фото максимального качества
+        photo = max(photos, key=lambda x: x['file_size']) if len(photos) > 1 else photos[-1]
+        file_id = photo['file_id']
 
-        # Анализ и классификация
-        gray = inverted.convert('L')
-        gray_array = np.array(gray)
-        std = gray_array.std()
-        result = "дельфин" if std < THRESHOLD else "человек"
+        # Получаем URL файла
+        file_info_url = f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={file_id}"
+        file_response = requests.get(file_info_url).json()
+        
+        if not file_response.get('ok'):
+            raise Exception("File info request failed")
 
-        # Отправка результата
-        with open(temp_output, 'rb') as photo:
-            bot.send_photo(
-                chat_id,
-                photo,
-                caption=f"🔍 Результат: {result}\n"
-                        f"📊 Стандартное отклонение: {std:.1f}"
+        file_path = file_response['result']['file_path']
+        download_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+
+        # Скачиваем изображение
+        response = requests.get(download_url)
+        if response.status_code != 200:
+            raise Exception("Failed to download image")
+
+        # Создаем временные файлы
+        timestamp = int(time.time())
+        os.makedirs(TEMP_DIR, exist_ok=True)
+        input_path = os.path.join(TEMP_DIR, f'input_{chat_id}_{timestamp}.jpg')
+        output_path = os.path.join(TEMP_DIR, f'output_{chat_id}_{timestamp}.jpg')
+
+        # Сохраняем и обрабатываем изображение
+        with open(input_path, 'wb') as f:
+            f.write(response.content)
+
+        # Инвертируем цвета
+        with Image.open(input_path) as img:
+            rgb_img = img.convert('RGB')
+            inverted = Image.eval(rgb_img, lambda x: 255 - x)
+            inverted.save(output_path, "JPEG")
+
+        # Отправляем результат
+        with open(output_path, 'rb') as photo_file:
+            files = {'photo': photo_file}
+            caption = "🖼 Обработанное изображение (инвертированные цвета)"
+            response = requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
+                data={'chat_id': chat_id, 'caption': caption},
+                files=files
             )
 
-        # Обновление статистики
+        if response.status_code != 200:
+            raise Exception("Failed to send photo")
+
+        # Обновляем статистику
         with create_connection() as conn:
             conn.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
+            conn.commit()
 
     except Exception as e:
         logger.error(f"Ошибка обработки изображения: {str(e)}", exc_info=True)
-        bot.reply_to(message, "❌ Ошибка обработки изображения")
-
+        send_message(chat_id, "❌ Произошла ошибка при обработке изображения")
+    
     finally:
-        # Очистка временных файлов
-        for file_path in [temp_input, temp_output]:
+        # Удаляем временные файлы
+        for path in [input_path, output_path]:
             try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
+                if path and os.path.exists(path):
+                    os.remove(path)
             except Exception as e:
                 logger.error(f"Ошибка удаления файла: {str(e)}")
 
