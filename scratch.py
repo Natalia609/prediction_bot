@@ -3,7 +3,7 @@ import os
 import logging
 import numpy as np
 from PIL import Image
-from telebot import types
+from telebot import types, apihelper
 import sqlite3
 import bcrypt
 import time
@@ -18,6 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+apihelper.ENABLE_MIDDLEWARE = True
 # Инициализация бота
 bot = telebot.TeleBot("7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA")
 
