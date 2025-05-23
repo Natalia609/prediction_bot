@@ -106,11 +106,13 @@ def is_registered(chat_id):
         cursor.execute("SELECT registered FROM users WHERE id=?", (chat_id,))
         result = cursor.fetchone()
         conn.close()
-        return result and result[0]
+        
+        logger.debug(f"Проверка регистрации для {chat_id}: результат={result}")
+        return result and result[0] == 1  # Явная проверка значения
+    
     except sqlite3.Error as e:
         logger.error(f"Database error in is_registered: {e}")
         return False
-
 
 def is_admin(chat_id):
     try:
