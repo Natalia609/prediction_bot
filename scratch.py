@@ -156,6 +156,8 @@ def create_keyboard(buttons, resize=True, one_time=False):
 
 def set_main_menu(chat_id):
     """Обновление главного меню"""
+    if not check_auth(chat_id):
+        return
     buttons = [
         [{"text": "📸 Классифицировать изображение"}],
         [{"text": "📊 Моя статистика"}, {"text": "🆘 Помощь"}]
@@ -321,9 +323,11 @@ def handle_command(chat_id, command, message):
     else:
         send_message(chat_id, "❌ Неизвестная команда")
 
-def handle_start(chat_id):
-    if is_registered(chat_id):
-        set_main_menu(chat_id)  # Было show_main_menu
+if is_registered(chat_id):
+        if is_logged_in(chat_id):
+            set_main_menu(chat_id)
+        else:
+            send_message(chat_id, "🔒 Требуется вход. Используйте /login")
     else:
         send_message(chat_id, 
             "👋 Для использования бота необходимо зарегистрироваться.\n"
@@ -348,19 +352,47 @@ def process_login(chat_id, password):
         result = cursor.fetchone()
         
     if result and check_password(result[0], password):
+        logged_users.add(chat_id)  # Добавляем в авторизованные
         send_message(chat_id, "🔓 Вход выполнен!")
-        set_main_menu(chat_id)  # Было show_main_menu
+        set_main_menu(chat_id)
     else:
         send_message(chat_id, "❌ Неверный пароль!")
-    del user_states[chat_id]
+    if chat_id in user_states:
+        del user_states[chat_id]
+def is_logged_in(chat_id):
+    return chat_id in logged_users
 
+def check_auth(chat_id):
+    if not is_registered(chat_id):
+        send_message(chat_id, "⚠️ Сначала зарегистрируйтесь с помощью /register")
+        return False
+    if not is_logged_in(chat_id):
+        send_message(chat_id, "⚠️ Требуется вход. Используйте /login")
+        return False
+    return True
+
+def handle_predict_image(chat_id):
+    if not check_auth(chat_id):
+        return
+    # Остальная логика
+
+def handle_stats(chat_id):
+    if not check_auth(chat_id):
+        return
+    # Остальная логика
+
+def handle_admin(chat_id):
+    if not check_auth(chat_id):
+        return
+    # Остальная логика
 def handle_logout(chat_id):
+    if chat_id in logged_users:
+        logged_users.remove(chat_id)  # Удаляем из авторизованных
     if chat_id in user_states:
         del user_states[chat_id]
     
-    # Создаем клавиатуру один раз
     keyboard = create_keyboard([], resize=False)
-    send_message(chat_id, "🚪 Вы вышли из системы", reply_markup=keyboard)
+    send_message(chat_id, "🚪 Вы вышли из системы. Для продолжения войдите или зарегистрируйтесь.", reply_markup=keyboard)
 
 def handle_admin(chat_id):
     # Добавляем проверку авторизации
