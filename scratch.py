@@ -213,8 +213,6 @@ def handle_ping(message):
         send_telegram(chat_id, "🏓 Pong!")
         
         
-        # Проверка доставки
-       )
     except Exception as e:
         logger.error(f"Ошибка при отправке: {str(e)}")
         logger.exception("Трассировка ошибки:")
