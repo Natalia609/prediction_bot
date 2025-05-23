@@ -2,21 +2,15 @@ import telebot
 import os
 import logging
 import numpy as np
-import tensorflow as tf
-from keras.utils import load_img, img_to_array
+from PIL import Image
 from telebot import types
 import sqlite3
 import bcrypt
-from flask import Flask, request, abort
-import secrets
-import io
-from tensorflow.keras.layers import InputLayer
-from tensorflow.keras.models import load_model
+import time
+from flask import Flask, request
 
-SECRET_TOKEN = "Jt9V3Lp"
-TELEGRAM_TOKEN="7478069267:AAH3DIWIPLa9NXwN7bwpU5i7VkTychXeFqw"
-PORT = int(os.environ.get('PORT', 10000))
-
+# Настройка Flask-приложения
+app = Flask(__name__)
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -24,105 +18,50 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация бота и Flask
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-app = Flask(__name__)
+# Инициализация бота
+bot = telebot.TeleBot("7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA")
 
-# Конфигурация модели
-MODEL_URL = "https://github.com/Natalia609/prediction_bot/releases/download/v1.0.0/people_dolphin_classifier.h5"
-MODEL_PATH = "people_dolphin_classifier.h5"
+# Конфигурация для Render
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMP_DIR = os.path.join(BASE_DIR, 'temp')
+DATABASE_PATH = os.path.join(BASE_DIR, 'users.db')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Будет установлен в настройках Render
+PORT = int(os.environ.get('PORT', 10000))  # Render использует порт 10000 по умолчанию
 
-
-def download_model():
-    """Скачивает и кэширует модель"""
-    if not os.path.exists(MODEL_PATH):
-        logger.info("Downloading model...")
-        try:
-            # ▼▼▼ Все строки внутри try должны иметь одинаковый отступ ▼▼▼
-            import requests  # <-- 4 пробела
-            
-            response = requests.get(MODEL_URL, stream=True)
-            response.raise_for_status()
-            
-            with open(MODEL_PATH, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            logger.info("Model downloaded successfully!")
-            
-        except Exception as e:
-            logger.error(f"Model download failed: {e}")
-            raise
-custom_objects = {
-    "InputLayer": lambda **kwargs: InputLayer(**{k: v for k, v in kwargs.items() if k != "batch_shape"})
-}
-
-# Инициализация модели
-try:
-    download_model()
-    model = load_model(MODEL_PATH, custom_objects=custom_objects, compile=False)
-    logger.info("✅ Model loaded successfully!")
-except Exception as e:
-    logger.error(f"❌ Failed to load model: {e}")
-    exit(1)
+# Параметры алгоритма
+THRESHOLD = 45  # Пороговое значение стандартного отклонения
+IMAGE_SIZE = (200, 200)  # Размер для ресайза изображений
 
 
-# Webhook handling
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
-        abort(403)
-
-    if request.content_type == 'application/json':
-        json_data = request.get_json()
-        update = telebot.types.Update.de_json(json_data)
-        bot.process_new_updates([update])
-        return '', 200
-    abort(400)
-
-
-def set_telegram_webhook():
-    webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL')}/webhook"
-
-    try:
-        response = requests.post(
-            f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook',
-            json={
-                'url': webhook_url,
-                'secret_token': SECRET_TOKEN,
-                'allowed_updates': ['message', 'callback_query'],
-                'drop_pending_updates': True
-            },
-            timeout=10
-        )
-        response.raise_for_status()
-        logger.info(f"Webhook set to: {webhook_url}")
-        return True
-    except Exception as e:
-        logger.error(f"Webhook setup error: {e}")
-        return False
-
-
-# Оптимизированная работа с базой данных
+# Инициализация базы данных
 def create_connection():
-    return sqlite3.connect(
-        os.path.join(os.getcwd(), 'users.db'),
-        check_same_thread=False,
-        timeout=10
-    )
+    return sqlite3.connect('users.db', check_same_thread=False)
 
 
 def init_db():
-    with create_connection() as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                username TEXT,
-                password_hash TEXT,
-                is_admin BOOLEAN DEFAULT 0,
-                prediction_count INTEGER DEFAULT 0,
-                registered BOOLEAN DEFAULT 0
-            )
-        ''')
+    db_path = 'users.db'
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT registered FROM users LIMIT 1")
+            conn.close()
+        except sqlite3.OperationalError:
+            os.remove(db_path)
+            logger.info("Удалена старая база данных из-за ошибки структуры")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            username TEXT,
+            password_hash TEXT,
+            is_admin BOOLEAN DEFAULT 0,
+            prediction_count INTEGER DEFAULT 0,
+            registered BOOLEAN DEFAULT 0
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -457,43 +396,114 @@ def process_password_reset(message):
 @bot.message_handler(content_types=['photo'])
 @check_registration
 def handle_photo(message):
+    chat_id = message.chat.id
+    timestamp = int(time.time())
+    temp_input = os.path.join(TEMP_DIR, f'input_{chat_id}_{timestamp}.jpg')
+    temp_output = os.path.join(TEMP_DIR, f'output_{chat_id}_{timestamp}.jpg')
+
     try:
+        # Создаем папку temp если не существует
+        os.makedirs(TEMP_DIR, exist_ok=True)
+        # Загрузка изображения
         file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded = bot.download_file(file_info.file_path)
-        
-        # Обработка в памяти без сохранения файла
-        img = load_img(io.BytesIO(downloaded), target_size=(200, 200))
-        x = img_to_array(img) / 255.0
-        x = np.expand_dims(x, axis=0)
-        
-        # Предсказание
-        if model:
-            pred = model.predict(x, verbose=0)[0][0]
-            result = "дельфин" if pred > 0.5 else "человек"
-            confidence = pred if pred > 0.5 else 1 - pred
-            response = f"🔍 Результат: {result} ({confidence:.1%})"
-        else:
-            response = "❌ Ошибка модели"
-        
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        # Сохранение оригинального изображения
+        with open(temp_input, 'wb') as f:
+            f.write(downloaded_file)
+
+        # Обработка изображения
+        img = Image.open(temp_input)
+        img = img.convert('RGB')
+
+        # Инвертирование цветов
+        inverted = Image.eval(img, lambda x: 255 - x)
+
+        # Сохранение инвертированного изображения
+        inverted.save(temp_output, "JPEG")
+
+        # Анализ для классификации
+        gray = inverted.convert('L')
+        gray_array = np.array(gray)
+        std = gray_array.std()
+        result = "дельфин" if std < THRESHOLD else "человек"
+
+        # Отправка результата и изображения
+        with open(temp_output, 'rb') as photo:
+            bot.send_photo(
+                chat_id,
+                photo
+            )
+
         # Обновление статистики
-        with create_connection() as conn:
-            conn.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (message.chat.id,))
-        
-        bot.reply_to(message, response)
-    
+        conn = create_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET prediction_count = prediction_count + 1 WHERE id=?", (chat_id,))
+        conn.commit()
+        conn.close()
+
+
     except Exception as e:
-        logger.error(f"Image error: {e}")
-        bot.reply_to(message, "❌ Ошибка обработки")
 
-if __name__ == '__main__':
-    init_db()
+        logger.error(f"Ошибка обработки изображения: {e}")
 
-    if set_telegram_webhook():
-        app.run(
-            host='0.0.0.0',
-            port=PORT,
-            debug=False,
-            use_reloader=False
-        )
-    else:
-        logger.error("Failed to start due to webhook setup error")
+        bot.reply_to(message, "❌ Ошибка обработки изображения")
+
+
+    finally:
+
+        # Удаление временных файлов
+
+        for file_path in [temp_input, temp_output]:
+
+            if os.path.exists(file_path):
+
+                try:
+
+                    os.remove(file_path)
+
+                except Exception as e:
+
+                    logger.error(f"Ошибка удаления файла {file_path}: {e}")
+
+    # Веб-хук обработчик
+
+    @app.route('/webhook', methods=['POST'])
+    def webhook():
+
+        if request.headers.get('content-type') == 'application/json':
+            json_data = request.get_data().decode('utf-8')
+
+            update = telebot.types.Update.de_json(json_data)
+
+            bot.process_new_updates([update])
+
+            return 'OK', 200
+
+        return 'Invalid request', 403
+
+    @app.route('/')
+    def home():
+
+        return "Telegram Bot is Running!"
+
+    if __name__ == '__main__':
+        # Инициализация необходимых директорий
+
+        os.makedirs(TEMP_DIR, exist_ok=True)
+
+        # Инициализация базы данных
+
+        init_db()
+
+        # Настройка вебхука
+
+        bot.remove_webhook()
+
+        time.sleep(1)
+
+        bot.set_webhook(url=WEBHOOK_URL)
+
+        # Запуск приложения
+
+        app.run(host='0.0.0.0', port=PORT)
