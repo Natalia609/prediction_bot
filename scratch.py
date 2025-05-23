@@ -178,7 +178,8 @@ class UserState:
     AWAIT_USER_ID_DELETE = 4
     AWAIT_USER_ID_PROMOTE = 5
     AWAIT_USER_ID_RESET = 6
-    LOGGED_IN = 7 
+    LOGGED_IN = 7
+    LOGGED_OUT = 8  # Новое состояние
 
 
 user_states = {}
@@ -306,6 +307,12 @@ def process_password(chat_id, password, username):
         send_message(chat_id, "❌ Внутренняя ошибка сервера. Попробуйте позже.")
     
 def handle_command(chat_id, command, message):
+    def handle_command(chat_id, command, message):
+    # Блокировка всех команд кроме регистрации/входа
+    if command not in ['/start', '/register', '/login']:
+        if not check_auth(chat_id):
+            return
+            
     if command == '/start':
         handle_start(chat_id)
     elif command == '/register':
@@ -364,23 +371,38 @@ def process_login(chat_id, password):
         del user_states[chat_id]
         
 def is_logged_in(chat_id):
-    """Проверка статуса авторизации с резервной проверкой в БД"""
-    if chat_id in logged_users:
+    """Проверка статуса авторизации с учетом всех условий"""
+    # Основная проверка авторизации и состояния
+    if chat_id in logged_users and user_states.get(chat_id) != UserState.LOGGED_OUT:
         return True
     
-    # На случай перезапуска сервера
-    with create_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM users WHERE id=? AND registered=1", (chat_id,))
-        return cursor.fetchone() is not None
+    # Резервная проверка в БД для случаев перезапуска сервера
+    try:
+        with create_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT registered FROM users WHERE id=? AND registered=1",
+                (chat_id,)
+            )
+            result = cursor.fetchone()
+            
+            # Обновляем статус в памяти, если пользователь зарегистрирован
+            if result and result[0]:
+                logged_users.add(chat_id)
+                return True
+                
+    except sqlite3.Error as e:
+        logger.error(f"Ошибка проверки авторизации в БД: {str(e)}")
+    
+    return False
 
 def check_auth(chat_id):
-    """Универсальная проверка авторизации"""
+    """Проверка авторизации с блокировкой функционала"""
     if not is_registered(chat_id):
-        send_message(chat_id, "⚠️ Сначала зарегистрируйтесь с помощью /register")
+        send_message(chat_id, "⚠️ Для доступа требуется регистрация (/register)")
         return False
     if not is_logged_in(chat_id):
-        send_message(chat_id, "⚠️ Требуется вход. Используйте /login")
+        send_message(chat_id, "🔒 Требуется авторизация (/login)")
         return False
     return True
 
@@ -392,9 +414,14 @@ def handle_logout(chat_id):
     if chat_id in user_states:
         del user_states[chat_id]
     
-    keyboard = create_keyboard([], resize=False)
-    send_message(chat_id, "🚪 Вы вышли из системы. Для продолжения войдите (/login) или зарегистрируйтесь (/register).", reply_markup=keyboard)
-
+    keyboard = create_keyboard([])
+    send_message(chat_id, "🚪 Вы вышли из системы. Для использования бота:\n"
+                          "➡️ Зарегистрируйтесь /register\n"
+                          "➡️ Или войдите /login", 
+                 reply_markup=keyboard)
+    
+    # Блокировка последующих действий
+    user_states[chat_id] = UserState.LOGGED_OUT  # Добавить новое состояние
 def handle_admin(chat_id):
     # Добавляем проверку авторизации
     if not is_registered(chat_id):
@@ -523,6 +550,8 @@ def process_password_reset(chat_id, user_id):
 # Обновлённая функция handle_message
 def handle_message(message):
     chat_id = message['chat']['id']
+    if not check_auth(chat_id) and message.get('text') not in ['/register', '/login']:
+        return
     text = message.get('text', '').lower()
     
     if text.startswith('/'):
@@ -555,6 +584,8 @@ def handle_photo(message_data):
     try:
         # Извлекаем данные из сообщения
         chat_id = message_data['chat']['id']
+        if not check_auth(chat_id):
+            return
         photos = message_data.get('photo', [])
         
         if not photos:
