@@ -308,9 +308,19 @@ def process_password(chat_id, password, username):
     
 def handle_command(chat_id, command, message):
     # Блокировка всех команд кроме регистрации/входа
-    if command not in ['/start', '/register', '/login']:
-        if not check_auth(chat_id):
-            return
+    if command.lower() in ['/start', '/register', '/login']:
+        if command == '/start':
+            handle_start(chat_id)
+        elif command == '/register':
+            start_registration(chat_id)
+        elif command == '/login':
+            start_login(chat_id)
+        return
+    
+    # Для остальных команд проверяем авторизацию
+    if not is_logged_in(chat_id):
+        send_message(chat_id, "🔒 Требуется авторизация! Используйте /login")
+        return
             
     if command == '/start':
         handle_start(chat_id)
@@ -354,43 +364,48 @@ def start_login(chat_id):
 
 
 def process_login(chat_id, password):
-    with create_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT password_hash FROM users WHERE id=?", (chat_id,))
-        result = cursor.fetchone()
+    try:
+        with create_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT password_hash FROM users WHERE id=?", (chat_id,))
+            result = cursor.fetchone()
         
-    if result and check_password(result[0], password):
-        logged_users.add(chat_id)  # Добавляем в авторизованные
-        user_states[chat_id] = UserState.LOGGED_IN  # Устанавливаем состояние
-        send_message(chat_id, "🔓 Вход выполнен!")
-        set_main_menu(chat_id)
-    else:
-        send_message(chat_id, "❌ Неверный пароль!")
-    if chat_id in user_states and user_states[chat_id] == UserState.AWAIT_PASSWORD_LOGIN:
-        del user_states[chat_id]
+        if result and check_password(result[0], password):
+            logged_users.add(chat_id)
+            
+            # Принудительное обновление интерфейса
+            set_main_menu(chat_id)
+            send_message(chat_id, "🔓 Вход выполнен!")
+            set_main_menu(chat_id)
+        else:
+            send_message(chat_id, "❌ Неверный пароль!")
+            
+    except Exception as e:
+        logger.error(f"Ошибка входа: {str(e)}")
+        send_message(chat_id, "❌ Ошибка сервера при входе")
+    
+    finally:
+        if chat_id in user_states:
+            del user_states[chat_id]
         
 def is_logged_in(chat_id):
     """Проверка статуса авторизации с учетом всех условий"""
     # Основная проверка авторизации и состояния
     
+    if chat_id in logged_users:
+        return True
     
-    # Резервная проверка в БД для случаев перезапуска сервера
+    # Резервная проверка в БД
     try:
         with create_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT registered FROM users WHERE id=? AND registered=1",
-                (chat_id,)
-            )
+            cursor.execute("SELECT registered FROM users WHERE id=?", (chat_id,))
             result = cursor.fetchone()
-            
-            # Обновляем статус в памяти, если пользователь зарегистрирован
             if result and result[0]:
-                logged_users.add(chat_id)
+                logged_users.add(chat_id)  # Восстанавливаем статус
                 return True
-                
-    except sqlite3.Error as e:
-        logger.error(f"Ошибка проверки авторизации в БД: {str(e)}")
+    except Exception as e:
+        logger.error(f"Ошибка проверки авторизации: {str(e)}")
     
     return False
 
@@ -403,13 +418,17 @@ def check_auth(chat_id):
 
 
 def handle_logout(chat_id):
-    """Модифицированный выход с сохранением доступа к базовым функциям"""
+    """Полный сброс состояния и клавиатуры"""
+    # Очищаем данные авторизации
     if chat_id in logged_users:
         logged_users.remove(chat_id)
+    
+    # Сбрасываем все состояния
     if chat_id in user_states:
         del user_states[chat_id]
     
-    keyboard = create_keyboard([
+    # Отправляем клавиатуру с базовыми командами
+    auth_keyboard = create_keyboard([
         [{"text": "/register"}, {"text": "/login"}]
     ])
     send_message(chat_id, "🚪 Вы вышли из системы. Для использования бота:\n"
