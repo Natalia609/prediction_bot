@@ -479,7 +479,7 @@ def handle_photo(message):
                     logger.error(f"Ошибка удаления файла {file_path}: {e}")
  # Веб-хук обработчик
 
-    @app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
     logger.info("Получен запрос на /webhook")
     try:
