@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 apihelper.ENABLE_MIDDLEWARE = True
 # Инициализация бота
-bot = telebot.TeleBot("7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA")
 
 # Конфигурация для Render
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -84,27 +83,6 @@ def init_db():
 
 init_db()
 
-def send_telegram(chat_id, text, reply_markup=None):
-    """Отправка сообщения через Telegram API"""
-    url = 'https://api.telegram.org/bot7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA/' + 'sendMessage'
-    payload = {
-        'chat_id': chat_id,
-        'text': text,
-        'parse_mode': 'HTML'
-    }
-    
-    if reply_markup:
-        payload['reply_markup'] = reply_markup
-        
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        logger.info(f"Сообщение отправлено в {chat_id}: {text[:50]}...")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка отправки: {str(e)}")
-        return False
-
 
 # Вспомогательные функции
 def hash_password(password):
@@ -143,16 +121,40 @@ def is_admin(chat_id):
     except sqlite3.Error as e:
         logger.error(f"Database error in is_admin: {e}")
         return False
+def send_message(chat_id, text, reply_markup=None):
+    """Отправка сообщения через Telegram API"""
+    url = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML'
+    }
+    
+    if reply_markup:
+        payload['reply_markup'] = json.dumps(reply_markup)
+        
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        logger.info(f"Сообщение отправлено в {chat_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка отправки: {str(e)}")
+        return False
 
 
-def get_main_menu_keyboard(chat_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("📸 Классифицировать изображение")
-    markup.row("📊 Моя статистика", "🆘 Помощь")
+def set_main_menu(chat_id):
+    """Установка главного меню"""
+    menu = {
+        'keyboard': [
+            [{"text": "📸 Классифицировать изображение"}],
+            [{"text": "📊 Моя статистика"}, {"text": "🆘 Помощь"}]
+        ],
+        'resize_keyboard': True
+    }
     if is_admin(chat_id):
-        markup.row("👑 Админ-панель")
-    return markup
-
+        menu['keyboard'].append([{"text": "👑 Админ-панель"}])
+    send_message(chat_id, "🏠 Главное меню\nВыберите действие:", menu)
 
 # Состояния пользователей
 class UserState:
@@ -177,293 +179,216 @@ def check_registration(func):
 
     return wrapper
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
+@app.route('/webhook', methods=['POST'])
+def webhook_handler():
     try:
-        logger.info(f"Получено сообщение: {message.text}")
-        # Ваша логика обработки
-        response = "Ответ на ваше сообщение"
-        logger.info(f"Отправка ответа: {response}")
-        sent_msg = bot.reply_to(message, response)
-        logger.info(f"Ответ отправлен. ID сообщения: {sent_msg.message_id}")
+        data = request.get_json()
+        logger.debug(f"Получено обновление: {data}")
+        
+        if 'message' in data:
+            handle_message(data['message'])
+            
+        return jsonify({'status': 'ok'}), 200
     except Exception as e:
-        logger.error(f"Ошибка: {str(e)}", exc_info=True)
-    
-@bot.middleware_handler(update_types=['message'])
-def log_messages(bot_instance, message):
-    logger.info(f"Received message: {message.text} | Chat ID: {message.chat.id} | User: {message.from_user.username}")
+        logger.error(f"Ошибка обработки вебхука: {str(e)}")
+        return jsonify({'status': 'error'}), 500
 
-# Обработчики команд
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    chat_id = message.chat.id
+# ... предыдущий код остаётся без изменений ...
+
+def handle_command(chat_id, command, message):
+    if command == '/start':
+        handle_start(chat_id)
+    elif command == '/register':
+        start_registration(chat_id)
+    elif command == '/login':
+        start_login(chat_id)
+    elif command == '/logout':
+        handle_logout(chat_id)
+    elif command == '/admin':
+        handle_admin(chat_id)
+    elif command == '📸 классифицировать изображение':
+        handle_predict_image(chat_id)
+    elif command == '📊 моя статистика':
+        handle_stats(chat_id)
+    elif command == '🆘 помощь':
+        handle_help(chat_id)
+    else:
+        send_message(chat_id, "❌ Неизвестная команда")
+
+def handle_start(chat_id):
     if is_registered(chat_id):
         show_main_menu(chat_id)
     else:
-        bot.send_message(chat_id,
-                         "👋 Добро пожаловать! Для использования бота необходимо зарегистрироваться.\n"
-                         "Используйте команду /register для создания аккаунта")
+        send_message(chat_id, 
+            "👋 Для использования бота необходимо зарегистрироваться.\n"
+            "Используйте /register для создания аккаунта")
 
-@bot.message_handler(func=lambda m: m.text.lower() == 'ping')
-def handle_ping(message):
-    try:
-        logger.info(f"Начало обработки ping для {message.chat.id}")
-        chat_id = message.chat.id
-        # Отправка сообщения с логированием
-        send_telegram(chat_id, "🏓 Pong!")
-        
-        
-    except Exception as e:
-        logger.error(f"Ошибка при отправке: {str(e)}")
-        logger.exception("Трассировка ошибки:")
-
-@bot.message_handler(commands=['register'])
-def register_user(message):
-    chat_id = message.chat.id
+def start_login(chat_id):
     if is_registered(chat_id):
-        bot.send_message(chat_id, "❌ Вы уже зарегистрированы!")
-        return
-
-    conn = create_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE id=?", (chat_id,))
-
-    if cursor.fetchone():
-        bot.send_message(chat_id, "❌ Вы уже зарегистрированы!")
+        user_states[chat_id] = UserState.AWAIT_PASSWORD_LOGIN
+        send_message(chat_id, "🔑 Введите ваш пароль:")
     else:
-        user_states[chat_id] = UserState.AWAIT_PASSWORD_REGISTER
-        bot.send_message(chat_id,
-                         "🔐 Придумайте и введите пароль для регистрации (минимум 8 символов, включая буквы и цифры):")
-    conn.close()
+        send_message(chat_id, "❌ Вы не зарегистрированы! Используйте /register")
 
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == UserState.AWAIT_PASSWORD_REGISTER)
-def process_password(message):
-    chat_id = message.chat.id
-    password = message.text
-
-    if not is_password_strong(password):
-        bot.send_message(chat_id, "❌ Пароль слишком простой! Используйте не менее 8 символов, включая буквы и цифры.")
-        return
-
-    conn = create_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
-    is_admin_flag = 0 if cursor.fetchone() else 1
-
-    cursor.execute('''
-        INSERT INTO users 
-        (id, username, password_hash, is_admin, registered)
-        VALUES (?, ?, ?, ?, 1)
-    ''', (chat_id, message.from_user.username, hash_password(password), is_admin_flag))
-
-    conn.commit()
-    conn.close()
-    del user_states[chat_id]
-
-    # Выводим полное меню после регистрации
-    text = "🎉 Регистрация успешна!"
-    if is_admin(chat_id):
-        text += "\n⚡ Вы стали администратором, так как зарегистрировались первым!"
-
-    bot.send_message(chat_id, text)
-    show_main_menu(chat_id)
-
-@bot.message_handler(content_types=['text'])
-def text_handler(message):
-    try:
-        response = f"Вы написали: {message.text}"
-        logger.info(f"Preparing response: {response}")
-        bot.send_message(message.chat.id, response)
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
+def process_login(chat_id, password):
+    with create_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT password_hash FROM users WHERE id=?", (chat_id,))
+        result = cursor.fetchone()
         
-@bot.message_handler(commands=['login'])
-def login_user(message):
-    chat_id = message.chat.id
-    user_states[chat_id] = UserState.AWAIT_PASSWORD_LOGIN
-    bot.send_message(chat_id, "🔑 Введите ваш пароль:")
-
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == UserState.AWAIT_PASSWORD_LOGIN)
-def process_login(message):
-    chat_id = message.chat.id
-    password = message.text
-    conn = create_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT password_hash FROM users WHERE id=?", (chat_id,))
-    result = cursor.fetchone()
-
     if result and check_password(result[0], password):
-        bot.send_message(chat_id, "🔓 Вход выполнен!")
+        send_message(chat_id, "🔓 Вход выполнен!")
         show_main_menu(chat_id)
     else:
-        bot.send_message(chat_id, "❌ Неверный пароль!")
-    conn.close()
+        send_message(chat_id, "❌ Неверный пароль!")
     del user_states[chat_id]
 
-
-@bot.message_handler(commands=['logout'])
-@check_registration
-def logout_user(message):
-    chat_id = message.chat.id
+def handle_logout(chat_id):
     if chat_id in user_states:
         del user_states[chat_id]
-    bot.send_message(chat_id, "🚪 Вы вышли из системы", reply_markup=types.ReplyKeyboardRemove())
+    send_message(chat_id, "🚪 Вы вышли из системы", create_keyboard([]))
 
-
-@bot.message_handler(commands=['admin'])
-@check_registration
-def admin_panel(message):
-    chat_id = message.chat.id
+def handle_admin(chat_id):
     if not is_admin(chat_id):
-        bot.send_message(chat_id, "⛔ Доступ запрещен!")
+        send_message(chat_id, "⛔ Доступ запрещен!")
         return
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("📋 Список пользователей", "❌ Удалить пользователя")
-    markup.row("👑 Добавить администратора", "🔄 Сбросить пароль")
-    markup.row("🔙 В главное меню")
+    
+    admin_menu = create_keyboard([
+        [{"text": "📋 Список пользователей"}, {"text": "❌ Удалить пользователя"}],
+        [{"text": "👑 Добавить администратора"}, {"text": "🔄 Сбросить пароль"}],
+        [{"text": "🔙 В главное меню"}]
+    ])
     user_states[chat_id] = UserState.AWAIT_ADMIN_ACTION
-    bot.send_message(chat_id, "⚙️ Админ-панель:", reply_markup=markup)
+    send_message(chat_id, "⚙️ Админ-панель:", admin_menu)
 
+def handle_admin_action(chat_id, text):
+    if text == "📋 список пользователей":
+        show_users_list(chat_id)
+    elif text == "❌ удалить пользователя":
+        user_states[chat_id] = UserState.AWAIT_USER_ID_DELETE
+        send_message(chat_id, "Введите ID пользователя для удаления:")
+    elif text == "👑 добавить администратора":
+        user_states[chat_id] = UserState.AWAIT_USER_ID_PROMOTE
+        send_message(chat_id, "Введите ID пользователя для повышения:")
+    elif text == "🔄 сбросить пароль":
+        user_states[chat_id] = UserState.AWAIT_USER_ID_RESET
+        send_message(chat_id, "Введите ID пользователя для сброса пароля:")
+    elif text == "🔙 в главное меню":
+        del user_states[chat_id]
+        show_main_menu(chat_id)
 
-@bot.message_handler(func=lambda message: message.text == "📸 Классифицировать изображение")
-@check_registration
-def predict_image_handler(message):
-    bot.send_message(message.chat.id, "📸 Отправьте изображение для классификации")
-
-
-@bot.message_handler(func=lambda message: message.text == "📊 Моя статистика")
-@check_registration
-def show_stats_handler(message):
-    chat_id = message.chat.id
-    conn = create_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT prediction_count FROM users WHERE id=?", (chat_id,))
-    count = cursor.fetchone()[0]
-    conn.close()
-    bot.send_message(chat_id, f"📊 Вы выполнили {count} классификаций")
-
-
-@bot.message_handler(func=lambda message: message.text == "🆘 Помощь")
-@check_registration
-def show_help(message):
-    chat_id = message.chat.id
-    text = (
-        "🆘 Список доступных команд:\n\n"
-        "/start - Главное меню\n"
-        "/login - Войти в аккаунт\n"
-        "/logout - Выйти из аккаунта\n"
-        "📸 Классифицировать изображение - определить, человек или дельфин на фото\n"
-        "📊 Моя статистика - показать количество выполненных классификаций\n"
-    )
-    if is_admin(chat_id):
-        text += "/admin - Админ-панель\n"
-    bot.send_message(chat_id, text)
-
-
-# Обработчик админ-действий
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == UserState.AWAIT_ADMIN_ACTION)
-def handle_admin_actions(message):
-    chat_id = message.chat.id
-
-    if message.text == "📋 Список пользователей":
-        conn = create_connection()
+def show_users_list(chat_id):
+    with create_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, username, is_admin, prediction_count FROM users")
         users = cursor.fetchall()
-        response = "👥 Список пользователей:\n\n"
-        for user in users:
-            response += (
-                f"🆔 ID: {user[0]}\n"
-                f"👤 Имя: {user[1]}\n"
-                f"👑 Админ: {'Да' if user[2] else 'Нет'}\n"
-                f"📊 Предсказаний: {user[3]}\n\n"
-            )
-        conn.close()
-        bot.send_message(chat_id, response)
+    
+    response = "👥 Список пользователей:\n\n"
+    for user in users:
+        response += (
+            f"🆔 ID: {user[0]}\n"
+            f"👤 Имя: {user[1]}\n"
+            f"👑 Админ: {'Да' if user[2] else 'Нет'}\n"
+            f"📊 Предсказаний: {user[3]}\n\n"
+        )
+    send_message(chat_id, response)
 
-    elif message.text == "❌ Удалить пользователя":
-        user_states[chat_id] = UserState.AWAIT_USER_ID_DELETE
-        bot.send_message(chat_id, "Введите ID пользователя для удаления:")
+def handle_predict_image(chat_id):
+    if not is_registered(chat_id):
+        send_message(chat_id, "❌ Необходима регистрация!")
+        return
+    send_message(chat_id, "📸 Отправьте изображение для классификации")
 
-    elif message.text == "👑 Добавить администратора":
-        user_states[chat_id] = UserState.AWAIT_USER_ID_PROMOTE
-        bot.send_message(chat_id, "Введите ID пользователя для повышения:")
-
-    elif message.text == "🔄 Сбросить пароль":
-        user_states[chat_id] = UserState.AWAIT_USER_ID_RESET
-        bot.send_message(chat_id, "Введите ID пользователя для сброса пароля:")
-
-    elif message.text == "🔙 В главное меню":
-        del user_states[chat_id]
-        show_main_menu(chat_id)
-
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == UserState.AWAIT_USER_ID_DELETE)
-def process_user_delete(message):
-    chat_id = message.chat.id
-    try:
-        user_id = int(message.text)
-        conn = create_connection()
+def handle_stats(chat_id):
+    with create_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM users WHERE id=?", (user_id,))
-        conn.commit()
-        conn.close()
-        bot.send_message(chat_id, f"✅ Пользователь {user_id} удален!")
+        cursor.execute("SELECT prediction_count FROM users WHERE id=?", (chat_id,))
+        count = cursor.fetchone()[0]
+    send_message(chat_id, f"📊 Вы выполнили {count} классификаций")
+
+def handle_help(chat_id):
+    help_text = (
+        "🆘 Список команд:\n"
+        "/start - Главное меню\n"
+        "/register - Регистрация\n"
+        "/login - Вход\n"
+        "/logout - Выход\n"
+        "/admin - Админ-панель (для администраторов)\n"
+        "📸 Классифицировать изображение\n"
+        "📊 Моя статистика\n"
+        "🆘 Помощь"
+    )
+    send_message(chat_id, help_text)
+
+# Обработка администраторских действий
+def process_user_delete(chat_id, user_id):
+    try:
+        with create_connection() as conn:
+            conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        send_message(chat_id, f"✅ Пользователь {user_id} удален!")
     except Exception as e:
-        logger.error(f"Ошибка удаления: {e}")
-        bot.send_message(chat_id, "❌ Ошибка удаления")
+        logger.error(f"Ошибка удаления: {str(e)}")
+        send_message(chat_id, "❌ Ошибка удаления")
     finally:
         del user_states[chat_id]
 
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == UserState.AWAIT_USER_ID_PROMOTE)
-def process_user_promote(message):
-    chat_id = message.chat.id
+def process_user_promote(chat_id, user_id):
     try:
-        user_id = int(message.text)
-        conn = create_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET is_admin=1 WHERE id=?", (user_id,))
-        conn.commit()
-        conn.close()
-        bot.send_message(chat_id, f"✅ Пользователь {user_id} стал администратором!")
+        with create_connection() as conn:
+            conn.execute("UPDATE users SET is_admin=1 WHERE id=?", (user_id,))
+        send_message(chat_id, f"✅ Пользователь {user_id} стал администратором!")
     except Exception as e:
-        logger.error(f"Ошибка назначения админа: {e}")
-        bot.send_message(chat_id, "❌ Ошибка обновления")
+        logger.error(f"Ошибка назначения админа: {str(e)}")
+        send_message(chat_id, "❌ Ошибка обновления")
     finally:
         del user_states[chat_id]
 
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == UserState.AWAIT_USER_ID_RESET)
-def process_password_reset(message):
-    chat_id = message.chat.id
+def process_password_reset(chat_id, user_id):
     try:
-        user_id = int(message.text)
         temp_pass = "temp123"
-        conn = create_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET password_hash=? WHERE id=?",
-            (hash_password(temp_pass), user_id))
-        conn.commit()
-        conn.close()
-        bot.send_message(chat_id, f"✅ Пароль для {user_id} сброшен. Временный пароль: {temp_pass}")
+        with create_connection() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash=? WHERE id=?",
+                (hash_password(temp_pass), user_id)
+            )
+        send_message(chat_id, f"✅ Пароль для {user_id} сброшен. Временный пароль: {temp_pass}")
     except Exception as e:
-        logger.error(f"Ошибка сброса пароля: {e}")
-        bot.send_message(chat_id, "❌ Ошибка сброса пароля")
+        logger.error(f"Ошибка сброса пароля: {str(e)}")
+        send_message(chat_id, "❌ Ошибка сброса пароля")
     finally:
         del user_states[chat_id]
 
+# Обновлённая функция handle_message
+def handle_message(message):
+    chat_id = message['chat']['id']
+    text = message.get('text', '').lower()
+    
+    if text.startswith('/'):
+        handle_command(chat_id, text, message)
+    elif chat_id in user_states:
+        handle_user_state(chat_id, text)
+    else:
+        send_message(chat_id, f"Вы написали: {text}")
+
+def handle_user_state(chat_id, text):
+    state = user_states.get(chat_id)
+    
+    if state == UserState.AWAIT_PASSWORD_REGISTER:
+        process_password(chat_id, text, message.get('from', {}).get('username'))
+    elif state == UserState.AWAIT_PASSWORD_LOGIN:
+        process_login(chat_id, text)
+    elif state == UserState.AWAIT_ADMIN_ACTION:
+        handle_admin_action(chat_id, text)
+    elif state == UserState.AWAIT_USER_ID_DELETE:
+        process_user_delete(chat_id, int(text))
+    elif state == UserState.AWAIT_USER_ID_PROMOTE:
+        process_user_promote(chat_id, int(text))
+    elif state == UserState.AWAIT_USER_ID_RESET:
+        process_password_reset(chat_id, int(text))
 
 # Обработчик изображений
-@bot.message_handler(content_types=['photo'])
-@check_registration
 def handle_photo(message):
-    chat_id = message.chat.id
+    chat_id = message['chat']['id']
     timestamp = int(time.time())
     temp_input = os.path.join(TEMP_DIR, f'input_{chat_id}_{timestamp}.jpg')
     temp_output = os.path.join(TEMP_DIR, f'output_{chat_id}_{timestamp}.jpg')
@@ -515,35 +440,20 @@ def handle_photo(message):
                 logger.error(f"Ошибка удаления файла: {str(e)}")
 
 # Веб-хук обработчик
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    try:
-        json_data = request.get_json()
-        if not json_data:
-            logger.error("Пустой запрос")
-            return "Bad Request", 400
-            
-        update = telebot.types.Update.de_json(json_data)
-        if update:
-            bot.process_new_updates([update])
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"Ошибка вебхука: {str(e)}", exc_info=True)
-        return "Server Error", 500
 
 @app.route('/')
 def home():
     return "Telegram Bot is Running!", 200
 
 if __name__ == '__main__':
-    os.makedirs(TEMP_DIR, exist_ok=True)
-    init_db()
-    
+    # Настройка вебхука
     try:
-        bot.remove_webhook()
-        bot.set_webhook(WEBHOOK_URL)
-        logger.info(f"Webhook установлен: {WEBHOOK_URL}")
+        response = requests.post(
+            f'https://api.telegram.org/bot{TOKEN}/setWebhook',
+            json={'url': WEBHOOK_URL}
+        )
+        logger.info(f"Вебхук установлен: {response.json()}")
     except Exception as e:
-        logger.error(f"Ошибка настройки webhook: {str(e)}")
+        logger.error(f"Ошибка настройки вебхука: {str(e)}")
     
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=10000)
