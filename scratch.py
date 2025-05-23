@@ -10,6 +10,7 @@ import time
 from flask import Flask, request
 import requests  # Добавить эту строку в секцию импортов
 
+TOKEN = 7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA
 # Настройка Flask-приложения
 app = Flask(__name__)
 # Настройка логирования
@@ -38,7 +39,7 @@ IMAGE_SIZE = (200, 200)  # Размер для ресайза изображен
 def check_telegram_connection():
     try:
         response = requests.get(
-            f"https://api.telegram.org/bot{TOKEN}/getMe",
+            f"https://api.telegram.org/bot7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA/getMe",
             timeout=5
         )
         logger.info(f"Статус подключения: {response.status_code}")
