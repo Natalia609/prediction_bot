@@ -396,24 +396,23 @@ def is_logged_in(chat_id):
     return False
 
 def check_auth(chat_id):
-    """Проверка авторизации с блокировкой функционала"""
-    if not is_registered(chat_id):
-        send_message(chat_id, "⚠️ Для доступа требуется регистрация (/register)")
-        return False
-    if not is_logged_in(chat_id):
-        send_message(chat_id, "🔒 Требуется авторизация (/login)")
-        return False
-    return True
+    """Проверка авторизации с разрешением регистрации/входа"""
+    if not is_registered(chat_id) and user_states.get(chat_id) != UserState.AWAIT_PASSWORD_REGISTER:
+        # Разрешаем процесс регистрации
+        return True
+    return chat_id in logged_users
 
 
 def handle_logout(chat_id):
-    # Удаляем из обоих множеств
+    """Модифицированный выход с сохранением доступа к базовым функциям"""
     if chat_id in logged_users:
         logged_users.remove(chat_id)
     if chat_id in user_states:
         del user_states[chat_id]
     
-    keyboard = create_keyboard([])
+    keyboard = create_keyboard([
+        [{"text": "/register"}, {"text": "/login"}]
+    ])
     send_message(chat_id, "🚪 Вы вышли из системы. Для использования бота:\n"
                           "➡️ Зарегистрируйтесь /register\n"
                           "➡️ Или войдите /login", 
