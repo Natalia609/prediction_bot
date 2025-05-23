@@ -223,20 +223,25 @@ def webhook_handler():
 
 # ... предыдущий код остаётся без изменений ...
 def start_registration(chat_id):
-    if chat_id in user_states:
-        send_message(chat_id, "⚠️ Завершите текущий процесс регистрации!")
-        return
+    try:
+        if chat_id in user_states:
+            send_message(chat_id, "⚠️ Завершите текущий процесс регистрации!")
+            return
+            
+        if is_registered(chat_id):
+            send_message(chat_id, "❌ Вы уже зарегистрированы!")
+            return
         
-    if is_registered(chat_id):
-        send_message(chat_id, "❌ Вы уже зарегистрированы!")
-        return
-    
-    user_states[chat_id] = UserState.AWAIT_PASSWORD_REGISTER
-    send_message(chat_id, "🔐 Придумайте пароль (минимум 8 символов, буквы и цифры):")
+        user_states[chat_id] = UserState.AWAIT_PASSWORD_REGISTER
+        send_message(chat_id, "🔐 Придумайте пароль (минимум 8 символов, буквы и цифры):")
+        
+    except Exception as e:
+        logger.error(f"Ошибка старта регистрации: {str(e)}")
+        send_message(chat_id, "❌ Ошибка инициализации регистрации")
 
 def process_password(chat_id, password, username):
-     # Добавляем проверку на существующего администратора
     try:
+        # Проверка сложности пароля
         if not is_password_strong(password):
             send_message(chat_id, "❌ Пароль должен содержать минимум 8 символов, буквы и цифры!")
             return
@@ -244,47 +249,57 @@ def process_password(chat_id, password, username):
         with create_connection() as conn:
             cursor = conn.cursor()
             
-            # Начало атомарной транзакции
-            conn.execute("BEGIN IMMEDIATE")
-            
-            # Проверка регистрации с блокировкой
-            cursor.execute("SELECT id FROM users WHERE id=? LOCKING WRITE", (chat_id,))
-            if cursor.fetchone():
-                send_message(chat_id, "❌ Вы уже зарегистрированы!")
+            try:
+                # Начало транзакции
+                conn.execute("BEGIN IMMEDIATE")
+                
+                # Проверка существующей регистрации с блокировкой
+                cursor.execute("SELECT id FROM users WHERE id=? LIMIT 1", (chat_id,))
+                if cursor.fetchone():
+                    logger.warning(f"Попытка повторной регистрации: {chat_id}")
+                    send_message(chat_id, "❌ Вы уже зарегистрированы!")
+                    conn.rollback()
+                    return
+
+                # Определение роли администратора
+                cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
+                is_admin_flag = 0 if cursor.fetchone() else 1
+
+                # Вставка данных с обработкой конфликтов
+                cursor.execute('''
+                    INSERT OR IGNORE INTO users 
+                        (id, username, password_hash, is_admin, registered)
+                    VALUES (?, ?, ?, ?, 1)
+                ''', (chat_id, username, hash_password(password), is_admin_flag))
+                
+                if cursor.rowcount == 0:
+                    raise sqlite3.IntegrityError("Duplicate user ID")
+                
+                conn.commit()
+                logger.info(f"Успешная регистрация: {chat_id}")
+
+            except sqlite3.IntegrityError as e:
+                logger.error(f"Конфликт данных: {str(e)}")
+                send_message(chat_id, "❌ Аккаунт уже существует!")
                 conn.rollback()
                 return
+                
+            except Exception as e:
+                logger.error(f"Ошибка БД: {str(e)}")
+                conn.rollback()
+                raise
 
-            # Проверка администраторов
-            cursor.execute("SELECT id FROM users WHERE is_admin=1 LIMIT 1")
-            is_admin_flag = 0 if cursor.fetchone() else 1
-
-            # Вставка данных
-            cursor.execute('''
-                INSERT INTO users (id, username, password_hash, is_admin, registered)
-                VALUES (?, ?, ?, ?, 1)
-            ''', (chat_id, username, hash_password(password), is_admin_flag))
-            
-            conn.commit()
-
-        # Очистка состояния
+        # Обновление интерфейса
         if chat_id in user_states:
             del user_states[chat_id]
-
+            
         text = "🎉 Регистрация успешна!" + ("\n⚡ Вы стали администратором!" if is_admin_flag else "")
         send_message(chat_id, text)
         set_main_menu(chat_id)
 
-    except sqlite3.IntegrityError as e:
-        logger.error(f"Conflict: {str(e)}")
-        send_message(chat_id, "❌ Аккаунт уже существует!")
-        if 'conn' in locals(): 
-            conn.rollback()
-            
     except Exception as e:
-        logger.error(f"Ошибка регистрации: {str(e)}")
-        send_message(chat_id, "❌ Ошибка сервера. Попробуйте позже.")
-        if 'conn' in locals(): 
-            conn.rollback()
+        logger.error(f"Критическая ошибка: {str(e)}\n{traceback.format_exc()}")
+        send_message(chat_id, "❌ Внутренняя ошибка сервера. Попробуйте позже.")
     
 def handle_command(chat_id, command, message):
     if command == '/start':
