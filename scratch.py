@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from telebot import types, apihelper
 import sqlite3
+from telegram import ReplyKeyboardMarkup
 import bcrypt
 import time
 from flask import Flask, request, jsonify
@@ -141,20 +142,27 @@ def send_message(chat_id, text, reply_markup=None):
     except Exception as e:
         logger.error(f"Ошибка отправки: {str(e)}")
         return False
-
+        
+def create_keyboard(buttons, resize=True, one_time=False):
+    """Создает клавиатуру из переданного массива кнопок"""
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=resize,
+        one_time_keyboard=one_time
+    )
 
 def set_main_menu(chat_id):
-    """Установка главного меню"""
-    menu = {
-        'keyboard': [
-            [{"text": "📸 Классифицировать изображение"}],
-            [{"text": "📊 Моя статистика"}, {"text": "🆘 Помощь"}]
-        ],
-        'resize_keyboard': True
-    }
+    """Обновление главного меню"""
+    buttons = [
+        [{"text": "📸 Классифицировать изображение"}],
+        [{"text": "📊 Моя статистика"}, {"text": "🆘 Помощь"}]
+    ]
+    
     if is_admin(chat_id):
-        menu['keyboard'].append([{"text": "👑 Админ-панель"}])
-    send_message(chat_id, "🏠 Главное меню\nВыберите действие:", menu)
+        buttons.append([{"text": "👑 Админ-панель"}])
+    
+    keyboard = create_keyboard(buttons)
+    send_message(chat_id, "🏠 Главное меню\nВыберите действие:", reply_markup=keyboard)
 
 # Состояния пользователей
 class UserState:
@@ -285,6 +293,7 @@ def process_login(chat_id, password):
 def handle_logout(chat_id):
     if chat_id in user_states:
         del user_states[chat_id]
+    keyboard = create_keyboard([], resize=False)
     send_message(chat_id, "🚪 Вы вышли из системы", create_keyboard([]))
 
 def handle_admin(chat_id):
@@ -292,11 +301,12 @@ def handle_admin(chat_id):
         send_message(chat_id, "⛔ Доступ запрещен!")
         return
     
-    admin_menu = create_keyboard([
+    admin_buttons = [
         [{"text": "📋 Список пользователей"}, {"text": "❌ Удалить пользователя"}],
         [{"text": "👑 Добавить администратора"}, {"text": "🔄 Сбросить пароль"}],
         [{"text": "🔙 В главное меню"}]
-    ])
+    ]
+    admin_menu = create_keyboard(admin_buttons)
     user_states[chat_id] = UserState.AWAIT_ADMIN_ACTION
     send_message(chat_id, "⚙️ Админ-панель:", admin_menu)
 
