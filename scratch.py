@@ -181,11 +181,17 @@ def check_registration(func):
 
 @app.route('/webhook', methods=['POST'])
 def webhook_handler():
-    data = request.get_json()  # Получаем данные из запроса
-    message = data.get('message')  # Извлекаем поле 'message'
-    
-    # Далее работайте с message
-    return jsonify({'status': 'ok'}), 200
+    try:
+        data = request.get_json()
+        logger.debug(f"Получено обновление: {data}")
+        
+        if 'message' in data:
+            handle_message(data['message'])
+            
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        logger.error(f"Ошибка обработки вебхука: {str(e)}")
+        return jsonify({'status': 'error'}), 500
 
 # ... предыдущий код остаётся без изменений ...
 def start_registration(chat_id):
