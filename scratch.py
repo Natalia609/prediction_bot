@@ -36,13 +36,12 @@ IMAGE_SIZE = (200, 200)  # Размер для ресайза изображен
 
 def check_telegram_connection():
     try:
-        import requests
         response = requests.get(
-            f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/getMe",
+            f"https://api.telegram.org/bot{TOKEN}/getMe",
             timeout=5
         )
-        logger.info(f"Проверка подключения к Telegram API: {response.status_code}")
-        logger.debug(f"Ответ API: {response.text}")
+        logger.info(f"Статус подключения: {response.status_code}")
+        logger.debug(f"Ответ Telegram API: {response.text}")
     except Exception as e:
         logger.error(f"Ошибка подключения: {str(e)}")
 
@@ -154,6 +153,18 @@ def check_registration(func):
         return func(message)
 
     return wrapper
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    try:
+        logger.info(f"Получено сообщение: {message.text}")
+        # Ваша логика обработки
+        response = "Ответ на ваше сообщение"
+        logger.info(f"Отправка ответа: {response}")
+        sent_msg = bot.reply_to(message, response)
+        logger.info(f"Ответ отправлен. ID сообщения: {sent_msg.message_id}")
+    except Exception as e:
+        logger.error(f"Ошибка: {str(e)}", exc_info=True)
     
 @bot.middleware_handler(update_types=['message'])
 def log_messages(bot_instance, message):
