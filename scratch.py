@@ -418,8 +418,6 @@ def handle_logout(chat_id):
                           "➡️ Или войдите /login", 
                  reply_markup=keyboard)
     
-    # Блокировка последующих действий
-    user_states[chat_id] = UserState.LOGGED_OUT  # Добавить новое состояние
 def handle_admin(chat_id):
     # Добавляем проверку авторизации
     if not is_registered(chat_id):
