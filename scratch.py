@@ -186,13 +186,24 @@ def webhook_handler():
         logger.debug(f"Получено обновление: {data}")
         
         if 'message' in data:
-            handle_message(data['message'])
+            message = data['message']  # Сохраняем message в переменную
+            chat = message.get('chat', {})
+            chat_id = chat.get('id')
+            text = message.get('text', '')
+            username = message.get('from', {}).get('username')
+
+            # Обрабатываем только если есть chat_id
+            if chat_id:
+                # Проверяем состояние пользователя ПЕРЕД обработкой команд
+                if user_states.get(chat_id) == UserState.AWAIT_PASSWORD_REGISTER:
+                    process_password(chat_id, text, username)
+                else:
+                    handle_command(chat_id, text, message)
             
         return jsonify({'status': 'ok'}), 200
     except Exception as e:
-        logger.error(f"Ошибка обработки вебхука: {str(e)}")
+        logger.error(f"Ошибка обработки вебхука: {str(e)}", exc_info=True)
         return jsonify({'status': 'error'}), 500
-
 # ... предыдущий код остаётся без изменений ...
 def start_registration(chat_id):
     if is_registered(chat_id):
