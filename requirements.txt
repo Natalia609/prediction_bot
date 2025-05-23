@@ -1,5 +1,7 @@
-Flask==2.0.3
-telebot==0.0.5
-Pillow==9.5.0
-numpy==1.23.5
-bcrypt==4.0.1
+gunicorn==21.2.0
+Flask==3.0.2
+python-telegram-bot==20.3
+Pillow==10.2.0
+numpy==1.26.4
+bcrypt==4.1.2
+requests==2.31.0
