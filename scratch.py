@@ -527,7 +527,7 @@ def handle_help(chat_id):
 
 # Обработка администраторских действий
 def process_user_delete(chat_id, user_id):
-   try:
+    try:
         # Проверка существования пользователя
         with create_connection() as conn:
             cursor = conn.cursor()
@@ -580,7 +580,6 @@ def process_password_reset(chat_id, user_id):
             cursor.execute(
                 "UPDATE users SET password_hash=? WHERE id=?",
                 (hash_password(temp_pass), user_id)
-            )
             conn.commit()
             
         send_message(chat_id, f"✅ Пароль для {user_id} сброшен. Временный пароль: {temp_pass}")
