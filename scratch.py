@@ -579,7 +579,8 @@ def process_password_reset(chat_id, user_id):
             temp_pass = "temp123"
             cursor.execute(
                 "UPDATE users SET password_hash=? WHERE id=?",
-                (hash_password(temp_pass), user_id))
+                (hash_password(temp_pass), user_id)
+            )
             conn.commit()
             
         send_message(chat_id, f"✅ Пароль для {user_id} сброшен. Временный пароль: {temp_pass}")
@@ -618,31 +619,52 @@ def handle_user_state(chat_id, text, message):  # Добавляем парам�
         
     # Обработка администраторских действий с проверкой ввода
     elif state == UserState.AWAIT_USER_ID_DELETE:
+        if text.lower() == "/cancel":
+            del user_states[chat_id]
+            send_message(chat_id, "❌ Операция отменена")
+            set_main_menu(chat_id)
+            return
+            
         try:
             user_id = int(text)
-            if process_user_delete(chat_id, user_id):
-                del user_states[chat_id]  # Успешно завершено
+            # Пытаемся выполнить операцию
+            success = process_user_delete(chat_id, user_id)
+            # Сбрасываем состояние независимо от результата
+            del user_states[chat_id]
+            # Возвращаем в главное меню
+            set_main_menu(chat_id)
         except ValueError:
-            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Пожалуйста, введите корректный ID:")
-            # Остаемся в том же состоянии для повторного ввода
+            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Введите ID или /cancel для отмены")
             
     elif state == UserState.AWAIT_USER_ID_PROMOTE:
+        if text.lower() == "/cancel":
+            del user_states[chat_id]
+            send_message(chat_id, "❌ Операция отменена")
+            set_main_menu(chat_id)
+            return
+            
         try:
             user_id = int(text)
-            if process_user_promote(chat_id, user_id):
-                del user_states[chat_id]  # Успешно завершено
+            success = process_user_promote(chat_id, user_id)
+            del user_states[chat_id]
+            set_main_menu(chat_id)
         except ValueError:
-            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Пожалуйста, введите корректный ID:")
-            # Остаемся в том же состоянии для повторного ввода
+            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Введите ID или /cancel для отмены")
             
     elif state == UserState.AWAIT_USER_ID_RESET:
+        if text.lower() == "/cancel":
+            del user_states[chat_id]
+            send_message(chat_id, "❌ Операция отменена")
+            set_main_menu(chat_id)
+            return
+            
         try:
             user_id = int(text)
-            if process_password_reset(chat_id, user_id):
-                del user_states[chat_id]  # Успешно завершено
+            success = process_password_reset(chat_id, user_id)
+            del user_states[chat_id]
+            set_main_menu(chat_id)
         except ValueError:
-            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Пожалуйста, введите корректный ID:")
-# Обработчик изображений
+            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Введите ID или /cancel для отмены")
 def handle_photo(message_data):
     try:
         # Извлекаем данные из сообщения
