@@ -665,6 +665,7 @@ def handle_user_state(chat_id, text, message):  # Добавляем парам�
             set_main_menu(chat_id)
         except ValueError:
             send_message(chat_id, "❌ Ожидается числовой ID пользователя. Введите ID или /cancel для отмены")
+
 def handle_photo(message_data):
     try:
         # Извлекаем данные из сообщения
