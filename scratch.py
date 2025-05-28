@@ -527,41 +527,68 @@ def handle_help(chat_id):
 
 # Обработка администраторских действий
 def process_user_delete(chat_id, user_id):
-    try:
+   try:
+        # Проверка существования пользователя
         with create_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE id=?", (user_id,))
+            if not cursor.fetchone():
+                send_message(chat_id, f"❌ Пользователь с ID {user_id} не найден!")
+                return False
+                
             conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+            conn.commit()
+            
         send_message(chat_id, f"✅ Пользователь {user_id} удален!")
+        return True
     except Exception as e:
         logger.error(f"Ошибка удаления: {str(e)}")
         send_message(chat_id, "❌ Ошибка удаления")
-    finally:
-        del user_states[chat_id]
+        return False
 
 def process_user_promote(chat_id, user_id):
     try:
+        # Проверка существования пользователя
         with create_connection() as conn:
-            conn.execute("UPDATE users SET is_admin=1 WHERE id=?", (user_id,))
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE id=?", (user_id,))
+            if not cursor.fetchone():
+                send_message(chat_id, f"❌ Пользователь с ID {user_id} не найден!")
+                return False
+                
+            cursor.execute("UPDATE users SET is_admin=1 WHERE id=?", (user_id,))
+            conn.commit()
+            
         send_message(chat_id, f"✅ Пользователь {user_id} стал администратором!")
+        return True
     except Exception as e:
         logger.error(f"Ошибка назначения админа: {str(e)}")
         send_message(chat_id, "❌ Ошибка обновления")
-    finally:
-        del user_states[chat_id]
+        return False
 
 def process_password_reset(chat_id, user_id):
     try:
-        temp_pass = "temp123"
+        # Проверка существования пользователя
         with create_connection() as conn:
-            conn.execute(
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE id=?", (user_id,))
+            if not cursor.fetchone():
+                send_message(chat_id, f"❌ Пользователь с ID {user_id} не найден!")
+                return False
+                
+            temp_pass = "temp123"
+            cursor.execute(
                 "UPDATE users SET password_hash=? WHERE id=?",
                 (hash_password(temp_pass), user_id)
             )
+            conn.commit()
+            
         send_message(chat_id, f"✅ Пароль для {user_id} сброшен. Временный пароль: {temp_pass}")
+        return True
     except Exception as e:
         logger.error(f"Ошибка сброса пароля: {str(e)}")
         send_message(chat_id, "❌ Ошибка сброса пароля")
-    finally:
-        del user_states[chat_id]
+        return False
 
 # Обновлённая функция handle_message
 def handle_message(message):
@@ -581,20 +608,41 @@ def handle_user_state(chat_id, text, message):  # Добавляем парам�
     state = user_states.get(chat_id)
     
     if state == UserState.AWAIT_PASSWORD_REGISTER:
-        # Используем переданный message
         username = message.get('from', {}).get('username', 'unknown')
         process_password(chat_id, text, username)
+        
     elif state == UserState.AWAIT_PASSWORD_LOGIN:
         process_login(chat_id, text)
+        
     elif state == UserState.AWAIT_ADMIN_ACTION:
         handle_admin_action(chat_id, text)
+        
+    # Обработка администраторских действий с проверкой ввода
     elif state == UserState.AWAIT_USER_ID_DELETE:
-        process_user_delete(chat_id, int(text))
+        try:
+            user_id = int(text)
+            if process_user_delete(chat_id, user_id):
+                del user_states[chat_id]  # Успешно завершено
+        except ValueError:
+            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Пожалуйста, введите корректный ID:")
+            # Остаемся в том же состоянии для повторного ввода
+            
     elif state == UserState.AWAIT_USER_ID_PROMOTE:
-        process_user_promote(chat_id, int(text))
+        try:
+            user_id = int(text)
+            if process_user_promote(chat_id, user_id):
+                del user_states[chat_id]  # Успешно завершено
+        except ValueError:
+            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Пожалуйста, введите корректный ID:")
+            # Остаемся в том же состоянии для повторного ввода
+            
     elif state == UserState.AWAIT_USER_ID_RESET:
-        process_password_reset(chat_id, int(text))
-
+        try:
+            user_id = int(text)
+            if process_password_reset(chat_id, user_id):
+                del user_states[chat_id]  # Успешно завершено
+        except ValueError:
+            send_message(chat_id, "❌ Ожидается числовой ID пользователя. Пожалуйста, введите корректный ID:")
 # Обработчик изображений
 def handle_photo(message_data):
     try:
