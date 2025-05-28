@@ -579,7 +579,7 @@ def process_password_reset(chat_id, user_id):
             temp_pass = "temp123"
             cursor.execute(
                 "UPDATE users SET password_hash=? WHERE id=?",
-                (hash_password(temp_pass), user_id)
+                (hash_password(temp_pass), user_id))
             conn.commit()
             
         send_message(chat_id, f"✅ Пароль для {user_id} сброшен. Временный пароль: {temp_pass}")
