@@ -10,7 +10,7 @@ import bcrypt
 import json
 import time
 from flask import Flask, request, jsonify
-import requests  # Добавить эту строку в секцию импортов
+import requests 
 
 TOKEN = '7478069267:AAGiHm9F4LeuV_UYSnXY7ht0lrZx0LPXwHA'
 # Настройка Flask-приложения
